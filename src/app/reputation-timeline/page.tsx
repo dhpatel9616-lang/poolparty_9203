@@ -54,38 +54,24 @@ const EVENT_ICONS: Record<string, { icon: string; color: string }> = {
   default: { icon: '📋', color: 'var(--muted-foreground)' },
 };
 
-const MOCK_SCORE: AccountabilityScore = {
-  accountability_score: 78.5,
-  response_rate: 94.2,
-  ghost_rate: 3.1,
-  would_participate_again_pct: 88.0,
-  reputation_level: 'gold',
-  total_contracts: 42,
-  completed_contracts: 38,
-  disputed_contracts: 2,
-  on_time_settlements: 35,
+const EMPTY_SCORE: AccountabilityScore = {
+  accountability_score: 50,
+  response_rate: 100,
+  ghost_rate: 0,
+  would_participate_again_pct: 100,
+  reputation_level: 'bronze',
+  total_contracts: 0,
+  completed_contracts: 0,
+  disputed_contracts: 0,
+  on_time_settlements: 0,
 };
-
-const MOCK_HISTORY: ReliabilityEvent[] = [
-  { id: '1', event_type: 'contract_completed', event_description: 'Completed NBA Finals pool', score_delta: 2.0, score_after: 78.5, occurred_at: new Date(Date.now() - 86400000).toISOString() },
-  { id: '2', event_type: 'on_time_settlement', event_description: 'Settled wager within 24h', score_delta: 1.5, score_after: 76.5, occurred_at: new Date(Date.now() - 172800000).toISOString() },
-  { id: '3', event_type: 'endorsement_received', event_description: 'Endorsed for reliability', score_delta: 0.5, score_after: 75.0, occurred_at: new Date(Date.now() - 259200000).toISOString() },
-  { id: '4', event_type: 'late_settlement', event_description: 'Settlement delayed 3 days', score_delta: -1.0, score_after: 74.5, occurred_at: new Date(Date.now() - 432000000).toISOString() },
-  { id: '5', event_type: 'contract_completed', event_description: 'Completed World Cup pool', score_delta: 2.0, score_after: 75.5, occurred_at: new Date(Date.now() - 604800000).toISOString() },
-];
-
-const MOCK_ENDORSEMENTS: Endorsement[] = [
-  { id: '1', category: 'reliability', note: 'Always pays on time!', weight: 1.0, created_at: new Date(Date.now() - 86400000).toISOString(), endorser: { full_name: 'Alex Chen', username: '@alexc' } },
-  { id: '2', category: 'sportsmanship', note: 'Great competitor', weight: 1.0, created_at: new Date(Date.now() - 172800000).toISOString(), endorser: { full_name: 'Jordan Smith', username: '@jsmith' } },
-  { id: '3', category: 'general', note: 'Trustworthy pool member', weight: 1.0, created_at: new Date(Date.now() - 345600000).toISOString(), endorser: { full_name: 'Sam Rivera', username: '@samr' } },
-];
 
 export default function ReputationTimelinePage() {
   const { user } = useAuth();
   const supabase = createClient();
-  const [score, setScore] = useState<AccountabilityScore>(MOCK_SCORE);
-  const [history, setHistory] = useState<ReliabilityEvent[]>(MOCK_HISTORY);
-  const [endorsements, setEndorsements] = useState<Endorsement[]>(MOCK_ENDORSEMENTS);
+  const [score, setScore] = useState<AccountabilityScore>(EMPTY_SCORE);
+  const [history, setHistory] = useState<ReliabilityEvent[]>([]);
+  const [endorsements, setEndorsements] = useState<Endorsement[]>([]);
   const [activeTab, setActiveTab] = useState<'timeline' | 'endorsements' | 'stats'>('timeline');
   const [loading, setLoading] = useState(false);
 
@@ -107,7 +93,7 @@ export default function ReputationTimelinePage() {
           .eq('user_id', user.id)
           .order('occurred_at', { ascending: false })
           .limit(30);
-        if (historyData && historyData.length > 0) setHistory(historyData);
+        if (historyData) setHistory(historyData);
 
         const { data: endorseData } = await supabase
           .from('social_endorsements')
@@ -115,7 +101,7 @@ export default function ReputationTimelinePage() {
           .eq('endorsed_id', user.id)
           .order('created_at', { ascending: false })
           .limit(20);
-        if (endorseData && endorseData.length > 0) setEndorsements(endorseData as any);
+        if (endorseData) setEndorsements(endorseData as any);
       } catch {}
       setLoading(false);
     };
@@ -211,6 +197,14 @@ export default function ReputationTimelinePage() {
           {/* Timeline Tab */}
           {activeTab === 'timeline' && (
             <div className="space-y-2">
+              {history.length === 0 && (
+                <div className="text-center py-10">
+                  <p className="text-sm font-semibold text-foreground">No history yet</p>
+                  <p className="text-xs mt-1" style={{ color: 'var(--muted-foreground)' }}>
+                    Complete contracts and settle up on time to build your timeline.
+                  </p>
+                </div>
+              )}
               {history.map((event, idx) => {
                 const cfg = EVENT_ICONS[event.event_type] || EVENT_ICONS.default;
                 const isPositive = event.score_delta >= 0;
@@ -260,6 +254,14 @@ export default function ReputationTimelinePage() {
                   +{(endorsements.length * 0.5).toFixed(1)} pts
                 </span>
               </div>
+              {endorsements.length === 0 && (
+                <div className="text-center py-10">
+                  <p className="text-sm font-semibold text-foreground">No endorsements yet</p>
+                  <p className="text-xs mt-1" style={{ color: 'var(--muted-foreground)' }}>
+                    Friends can endorse you from your profile after playing together.
+                  </p>
+                </div>
+              )}
               {endorsements.map((e) => (
                 <div key={e.id} className="rounded-xl p-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
                   <div className="flex items-start gap-3">

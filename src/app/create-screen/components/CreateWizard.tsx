@@ -173,15 +173,6 @@ export default function CreateWizard() {
     }
     setSubmitting(true);
     try {
-      let outcomesData: any[] = [];
-      if (contractType === 'yes_no' || contractType === 'multi') {
-        outcomesData = outcomes.map((o) => ({ label: o.label, confidence: getConfidencePreset(o.weight).label }));
-      } else if (contractType === 'number') {
-        outcomesData = [{ label: 'Numeric prediction', min: numericMin, max: numericMax, unit: numericUnit, prediction: numericPrediction }];
-      } else if (contractType === 'time') {
-        outcomesData = [{ label: 'Date/time prediction', predicted_at: timePrediction ? `${timePrediction}T${timePredictionTime}:00` : null }];
-      }
-
       // Moderation framework: when REQUIRE_POOL_APPROVAL is true, new pools sit in
       // the admin Approval Queue (/admin) until manually approved — useful once you
       // have public/stranger-facing Discover traffic worth moderating. Off by default
@@ -191,7 +182,6 @@ export default function CreateWizard() {
       const poolData = {
         title,
         contract_type: contractType,
-        outcomes: outcomesData,
         visibility,
         group_ids: selectedGroups,
         stake_note: stakeNote,
@@ -204,14 +194,40 @@ export default function CreateWizard() {
 
       const { data, error } = await supabase.from('pools').insert(poolData).select().single();
 
-      if (!error && data) {
-        setCreatedPoolId(data.id);
+      if (error || !data) {
+        toast.error(error?.message || 'Failed to create contract. Please try again.');
+        setSubmitting(false);
+        return;
       }
+
+      // Outcomes are real rows in pool_outcomes, not a JSON field on pools —
+      // pool_entries and the resolve flow both reference pool_outcomes.id directly.
+      let outcomeRows: { pool_id: string; label: string; weight: number }[] = [];
+      if (contractType === 'yes_no' || contractType === 'multi') {
+        outcomeRows = outcomes.map((o) => ({ pool_id: data.id, label: o.label, weight: o.weight }));
+      } else if (contractType === 'number') {
+        const rangeText = numericMin && numericMax ? ` (range ${numericMin}\u2013${numericMax}${numericUnit ? ` ${numericUnit}` : ''})` : '';
+        outcomeRows = [{ pool_id: data.id, label: `Numeric prediction${rangeText}${numericPrediction ? ` — target ${numericPrediction}` : ''}`, weight: 0 }];
+      } else if (contractType === 'time') {
+        const whenText = timePrediction ? ` — ${timePrediction}${timePredictionTime ? ` ${timePredictionTime}` : ''}` : '';
+        outcomeRows = [{ pool_id: data.id, label: `Date/time prediction${whenText}`, weight: 0 }];
+      }
+
+      if (outcomeRows.length > 0) {
+        const { error: outcomeError } = await supabase.from('pool_outcomes').insert(outcomeRows);
+        if (outcomeError) {
+          // Pool exists but outcomes failed — surface this clearly rather than
+          // silently leaving a pool with no selectable outcomes.
+          toast.error('Contract created, but outcomes failed to save. Please edit the contract to add outcomes.');
+        }
+      }
+
+      setCreatedPoolId(data.id);
       setSubmitted(true);
       toast.success(REQUIRE_POOL_APPROVAL ? 'Contract submitted for approval! 🎉' : 'Contract created! 🎉');
-    } catch {
-      setSubmitted(true);
-      toast.success('Contract created! 🎉');
+    } catch (err) {
+      console.error('Contract creation failed', err);
+      toast.error('Failed to create contract. Please check your connection and try again.');
     }
     setSubmitting(false);
   };

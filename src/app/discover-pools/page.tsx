@@ -289,7 +289,7 @@ export default function DiscoverPoolsPage() {
   const router = useRouter();
   const supabase = createClient();
   const [templates, setTemplates] = useState<PoolTemplate[]>(MOCK_TEMPLATES);
-  const [creators, setCreators] = useState<SuggestedCreator[]>(MOCK_CREATORS);
+  const [creators, setCreators] = useState<SuggestedCreator[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<string | null>(null);
@@ -323,7 +323,7 @@ export default function DiscoverPoolsPage() {
       eq('is_public', true).
       order('creator_score', { ascending: false }).
       limit(8);
-      if (data && data.length > 0) setCreators(data as SuggestedCreator[]);
+      if (data) setCreators(data as SuggestedCreator[]);
     } catch {/* fallback to mock */}
   }, [supabase]);
 
@@ -492,7 +492,13 @@ export default function DiscoverPoolsPage() {
             <SectionRow title="Trending Now" items={trending} sectionId="trending" />
 
             {/* Creators */}
-            {(!activeSection || activeSection === 'creators') &&
+            {(!activeSection || activeSection === 'creators') && creators.length === 0 && activeSection === 'creators' && (
+              <div className="text-center py-12 px-4">
+                <p className="text-sm font-semibold text-foreground">No creators yet</p>
+                <p className="text-xs mt-1" style={{ color: 'var(--muted-foreground)' }}>Be the first — set up a Creator Profile from your profile page.</p>
+              </div>
+            )}
+            {(!activeSection || activeSection === 'creators') && creators.length > 0 &&
           <div className="mb-6">
                 <div className="flex items-center justify-between mb-3 px-4">
                   <h2 className="text-sm font-bold text-foreground">Top Creators</h2>

@@ -35,37 +35,6 @@ interface Badge {
   badge_description: string;
 }
 
-const MOCK_SEASON: Season = {
-  id: '1',
-  season_name: 'Season 1: Genesis',
-  season_number: 1,
-  season_status: 'active',
-  starts_at: new Date(Date.now() - 30 * 86400000).toISOString(),
-  ends_at: new Date(Date.now() + 60 * 86400000).toISOString(),
-  description: 'The inaugural PoolParty season',
-};
-
-const MOCK_RANKINGS: Ranking[] = [
-  { rank_position: 1, season_points: 2840, pools_won: 18, pools_entered: 24, streak_best: 7, user_id: 'u1', user: { full_name: 'Alex Chen', username: '@alexc', avatar_url: '' } },
-  { rank_position: 2, season_points: 2610, pools_won: 15, pools_entered: 22, streak_best: 5, user_id: 'u2', user: { full_name: 'Jordan Smith', username: '@jsmith', avatar_url: '' } },
-  { rank_position: 3, season_points: 2390, pools_won: 14, pools_entered: 20, streak_best: 6, user_id: 'u3', user: { full_name: 'Sam Rivera', username: '@samr', avatar_url: '' } },
-  { rank_position: 4, season_points: 2150, pools_won: 12, pools_entered: 19, streak_best: 4, user_id: 'u4', user: { full_name: 'Taylor Kim', username: '@tkim', avatar_url: '' } },
-  { rank_position: 5, season_points: 1980, pools_won: 11, pools_entered: 18, streak_best: 4, user_id: 'u5', user: { full_name: 'Morgan Lee', username: '@mlee', avatar_url: '' } },
-  { rank_position: 6, season_points: 1820, pools_won: 10, pools_entered: 17, streak_best: 3, user_id: 'u6', user: { full_name: 'Casey Park', username: '@cpark', avatar_url: '' } },
-  { rank_position: 7, season_points: 1650, pools_won: 9, pools_entered: 16, streak_best: 3, user_id: 'u7', user: { full_name: 'Riley Johnson', username: '@rjohnson', avatar_url: '' } },
-  { rank_position: 8, season_points: 1490, pools_won: 8, pools_entered: 15, streak_best: 2, user_id: 'u8', user: { full_name: 'Drew Wilson', username: '@dwilson', avatar_url: '' } },
-  { rank_position: 9, season_points: 1320, pools_won: 7, pools_entered: 14, streak_best: 2, user_id: 'u9', user: { full_name: 'Quinn Davis', username: '@qdavis', avatar_url: '' } },
-  { rank_position: 10, season_points: 1180, pools_won: 6, pools_entered: 13, streak_best: 2, user_id: 'u10', user: { full_name: 'Avery Brown', username: '@abrown', avatar_url: '' } },
-];
-
-const MOCK_BADGES: Badge[] = [
-  { badge_key: 'season1_winner', badge_name: 'Season Champion', badge_icon: '🏆', badge_tier: 'legendary', badge_description: 'Won the most pools in Season 1' },
-  { badge_key: 'season1_streak', badge_name: 'Hot Streak', badge_icon: '🔥', badge_tier: 'rare', badge_description: 'Won 5 pools in a row' },
-  { badge_key: 'trustworthy', badge_name: 'Trustworthy', badge_icon: '🛡️', badge_tier: 'uncommon', badge_description: 'Maintained 90%+ accountability' },
-  { badge_key: 'social_butterfly', badge_name: 'Social Butterfly', badge_icon: '🦋', badge_tier: 'common', badge_description: 'Endorsed by 10+ users' },
-  { badge_key: 'dispute_free', badge_name: 'Clean Record', badge_icon: '✨', badge_tier: 'uncommon', badge_description: 'Zero disputes this season' },
-];
-
 const TIER_COLORS: Record<string, string> = {
   legendary: '#FFD700',
   rare: '#B9F2FF',
@@ -84,8 +53,8 @@ export default function SeasonalLeaderboardPage() {
   const router = useRouter();
   const supabase = createClient();
   const [season, setSeason] = useState<Season | null>(null);
-  const [rankings, setRankings] = useState<Ranking[]>(MOCK_RANKINGS);
-  const [badges, setBadges] = useState<Badge[]>(MOCK_BADGES);
+  const [rankings, setRankings] = useState<Ranking[]>([]);
+  const [badges, setBadges] = useState<Badge[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'rankings' | 'badges'>('rankings');
   const [myRank, setMyRank] = useState<Ranking | null>(null);
@@ -108,13 +77,13 @@ export default function SeasonalLeaderboardPage() {
             .eq('season_id', seasonData.id)
             .order('rank_position', { ascending: true })
             .limit(20);
-          if (rankData && rankData.length > 0) setRankings(rankData as any);
+          if (rankData) setRankings(rankData as any);
 
           const { data: badgeData } = await supabase
             .from('seasonal_badges')
             .select('*')
             .eq('season_id', seasonData.id);
-          if (badgeData && badgeData.length > 0) setBadges(badgeData as any);
+          if (badgeData) setBadges(badgeData as any);
         } else {
           const { data: anySeason } = await supabase
             .from('seasons')
@@ -214,6 +183,14 @@ export default function SeasonalLeaderboardPage() {
               </div>
 
               {/* Full rankings — each row clickable */}
+              {rankings.length === 0 && (
+                <div className="text-center py-10">
+                  <p className="text-sm font-semibold text-foreground">No rankings yet</p>
+                  <p className="text-xs mt-1" style={{ color: 'var(--muted-foreground)' }}>
+                    Play in pools this season to appear on the leaderboard.
+                  </p>
+                </div>
+              )}
               {rankings.map((r, idx) => (
                 <button
                   key={idx}
@@ -245,6 +222,11 @@ export default function SeasonalLeaderboardPage() {
             <div className="space-y-3">
               <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Earn badges by completing seasonal challenges</p>
               <div className="grid grid-cols-2 gap-3">
+                {badges.length === 0 && (
+                  <p className="col-span-2 text-center text-sm py-8" style={{ color: 'var(--muted-foreground)' }}>
+                    No badges available for this season yet.
+                  </p>
+                )}
                 {badges.map(badge => (
                   <div key={badge.badge_key} className="rounded-xl p-4 flex flex-col items-center gap-2 text-center" style={{ background: 'var(--surface)', border: `1px solid ${TIER_COLORS[badge.badge_tier] || 'var(--border)'}44` }}>
                     <span className="text-3xl">{badge.badge_icon}</span>

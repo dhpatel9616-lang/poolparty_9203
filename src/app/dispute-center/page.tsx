@@ -46,12 +46,6 @@ const STATUS_CONFIG: Record<string, { color: string; icon: React.ReactNode; labe
   closed: { color: 'var(--muted-foreground)', icon: <CheckCircle size={12} />, label: 'Closed' },
 };
 
-const MOCK_DISPUTES: Dispute[] = [
-  { id: '1', title: 'Unpaid wager from NBA Finals pool', description: 'User has not paid their agreed amount after 7 days of the pool resolving.', dispute_status: 'open', resolution: null, created_at: new Date(Date.now() - 86400000).toISOString(), opened_by: 'me', against_user_id: 'other', opener: { full_name: 'You' }, against: { full_name: 'Jordan M.' } },
-  { id: '2', title: 'Incorrect pool outcome reported', description: 'The pool admin marked the wrong team as winner.', dispute_status: 'under_review', resolution: null, created_at: new Date(Date.now() - 259200000).toISOString(), opened_by: 'other', against_user_id: 'me', opener: { full_name: 'Alex C.' }, against: { full_name: 'You' } },
-  { id: '3', title: 'Late payment dispute', description: 'Payment was made but not acknowledged.', dispute_status: 'resolved', resolution: 'upheld', created_at: new Date(Date.now() - 604800000).toISOString(), opened_by: 'me', against_user_id: 'other', opener: { full_name: 'You' }, against: { full_name: 'Sam R.' } },
-];
-
 function DisputeDetailView({ dispute, onBack }: { dispute: Dispute; onBack: () => void }) {
   const { user } = useAuth();
   const supabase = createClient();
@@ -315,7 +309,7 @@ function DisputeDetailView({ dispute, onBack }: { dispute: Dispute; onBack: () =
 export default function DisputeCenterPage() {
   const { user } = useAuth();
   const supabase = createClient();
-  const [disputes, setDisputes] = useState<Dispute[]>(MOCK_DISPUTES);
+  const [disputes, setDisputes] = useState<Dispute[]>([]);
   const [selectedDispute, setSelectedDispute] = useState<Dispute | null>(null);
   const [showNewForm, setShowNewForm] = useState(false);
   const [newTitle, setNewTitle] = useState('');
@@ -331,7 +325,7 @@ export default function DisputeCenterPage() {
         .select('*, opener:opened_by(full_name), against:against_user_id(full_name)')
         .or(`opened_by.eq.${user.id},against_user_id.eq.${user.id}`)
         .order('created_at', { ascending: false });
-      if (data && data.length > 0) setDisputes(data as any);
+      if (data) setDisputes(data as any);
     };
     fetchDisputes();
   }, [user]);

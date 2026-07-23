@@ -41,26 +41,12 @@ const REL_COLORS: Record<string, string> = {
   blocked: '#ff4444',
 };
 
-const MOCK_RELATIONSHIPS: TrustRelationship[] = [
-  { id: '1', relationship_type: 'endorsed', trust_score: 88.5, interaction_count: 12, last_interaction_at: new Date(Date.now() - 86400000).toISOString(), connected_user: { full_name: 'Alex Chen', username: '@alexc' } },
-  { id: '2', relationship_type: 'endorsed', trust_score: 76.2, interaction_count: 8, last_interaction_at: new Date(Date.now() - 172800000).toISOString(), connected_user: { full_name: 'Jordan Smith', username: '@jsmith' } },
-  { id: '3', relationship_type: 'neutral', trust_score: 62.0, interaction_count: 4, last_interaction_at: new Date(Date.now() - 432000000).toISOString(), connected_user: { full_name: 'Sam Rivera', username: '@samr' } },
-  { id: '4', relationship_type: 'endorsed', trust_score: 91.3, interaction_count: 18, last_interaction_at: new Date(Date.now() - 259200000).toISOString(), connected_user: { full_name: 'Taylor Kim', username: '@tkim' } },
-  { id: '5', relationship_type: 'flagged', trust_score: 31.5, interaction_count: 2, last_interaction_at: new Date(Date.now() - 604800000).toISOString(), connected_user: { full_name: 'Morgan Lee', username: '@mlee' } },
-];
-
-const MOCK_CLUSTERS: TrustCluster[] = [
-  { id: '1', cluster_name: 'Core Community', cluster_key: 'core_community', member_count: 24, avg_trust_score: 75.0, cohesion_score: 0.8 },
-  { id: '2', cluster_name: 'Sports Bettors', cluster_key: 'sports_bettors', member_count: 18, avg_trust_score: 68.0, cohesion_score: 0.65 },
-  { id: '3', cluster_name: 'Finance Pool', cluster_key: 'finance_pool', member_count: 12, avg_trust_score: 82.0, cohesion_score: 0.9 },
-];
-
-function generateGraphNodes(relationships: TrustRelationship[]): GraphNode[] {
+function generateGraphNodes(relationships: TrustRelationship[], myScore: number): GraphNode[] {
   const centerX = 160;
   const centerY = 140;
   const radius = 90;
   const nodes: GraphNode[] = [
-    { id: 'me', name: 'You', trustScore: 78.5, x: centerX, y: centerY, size: 28, color: 'var(--primary)' },
+    { id: 'me', name: 'You', trustScore: myScore, x: centerX, y: centerY, size: 28, color: 'var(--primary)' },
   ];
   relationships.slice(0, 6).forEach((rel, i) => {
     const angle = (i / Math.min(relationships.length, 6)) * Math.PI * 2 - Math.PI / 2;
@@ -81,15 +67,16 @@ function generateGraphNodes(relationships: TrustRelationship[]): GraphNode[] {
 export default function TrustGraphPage() {
   const { user } = useAuth();
   const supabase = createClient();
-  const [relationships, setRelationships] = useState<TrustRelationship[]>(MOCK_RELATIONSHIPS);
-  const [clusters, setClusters] = useState<TrustCluster[]>(MOCK_CLUSTERS);
+  const [relationships, setRelationships] = useState<TrustRelationship[]>([]);
+  const [clusters, setClusters] = useState<TrustCluster[]>([]);
+  const [myScore, setMyScore] = useState(50);
   const [activeTab, setActiveTab] = useState<'graph' | 'connections' | 'clusters'>('graph');
   const [searchQuery, setSearchQuery] = useState('');
   const [graphNodes, setGraphNodes] = useState<GraphNode[]>([]);
 
   useEffect(() => {
-    setGraphNodes(generateGraphNodes(relationships));
-  }, [relationships]);
+    setGraphNodes(generateGraphNodes(relationships, myScore));
+  }, [relationships, myScore]);
 
   useEffect(() => {
     if (!user) return;
@@ -101,13 +88,20 @@ export default function TrustGraphPage() {
           .eq('from_user_id', user.id)
           .order('trust_score', { ascending: false })
           .limit(20);
-        if (relData && relData.length > 0) setRelationships(relData as any);
+        setRelationships((relData as any) ?? []);
 
         const { data: clusterData } = await supabase
           .from('trust_clusters')
           .select('*')
           .order('avg_trust_score', { ascending: false });
-        if (clusterData && clusterData.length > 0) setClusters(clusterData);
+        setClusters(clusterData ?? []);
+
+        const { data: scoreData } = await supabase
+          .from('accountability_scores')
+          .select('accountability_score')
+          .eq('user_id', user.id)
+          .single();
+        if (scoreData) setMyScore(Number(scoreData.accountability_score));
       } catch {}
     };
     fetchData();
@@ -226,6 +220,14 @@ export default function TrustGraphPage() {
                   style={{ color: 'var(--foreground)' }}
                 />
               </div>
+              {filteredRels.length === 0 && (
+                <div className="text-center py-10">
+                  <p className="text-sm font-semibold text-foreground">No connections yet</p>
+                  <p className="text-xs mt-1" style={{ color: 'var(--muted-foreground)' }}>
+                    Play in pools together to start building your trust network.
+                  </p>
+                </div>
+              )}
               {filteredRels.map(rel => {
                 const relColor = REL_COLORS[rel.relationship_type] || 'var(--muted-foreground)';
                 const scoreColor = rel.trust_score >= 70 ? 'var(--success)' : rel.trust_score >= 40 ? 'var(--warning)' : 'var(--accent)';

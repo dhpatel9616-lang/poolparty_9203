@@ -22,24 +22,32 @@ interface CreatorProfile {
   social_links: Record<string, string> | null;
 }
 
-const MOCK_CREATOR: CreatorProfile = {
-  id: '1', display_name: 'PoolMaster Pro', tagline: 'Creating the best sports pools since 2023 🏆',
-  is_verified: true, is_public: true, follower_count: 1247, following_count: 89,
-  public_pool_count: 34, total_participants: 8920, creator_score: 94.2, social_links: null,
+const EMPTY_CREATOR: CreatorProfile = {
+  id: '', display_name: 'Creator', tagline: '',
+  is_verified: false, is_public: true, follower_count: 0, following_count: 0,
+  public_pool_count: 0, total_participants: 0, creator_score: 0, social_links: null,
 };
 
-const MOCK_TOP_POOLS = [
-  { id: '1', name: 'NBA Finals 2026', participants: 342, prize: '$1,200', status: 'active' },
-  { id: '2', name: 'World Cup Qualifier', participants: 218, prize: '$800', status: 'active' },
-  { id: '3', name: 'Super Bowl LX', participants: 891, prize: '$3,500', status: 'ended' },
-  { id: '4', name: 'March Madness 2026', participants: 456, prize: '$2,000', status: 'ended' },
-];
+const ACTIVITY_LABELS: Record<string, string> = {
+  pool_created: 'Created',
+  pool_resolved: 'Resolved',
+  contract_created: 'Created',
+  contract_resolved: 'Resolved',
+  group_created: 'Created group',
+  follower: 'Gained a new follower',
+};
 
-const MOCK_ACTIVITY = [
-  { id: 'a1', type: 'pool_created', text: 'Created "NBA Finals 2026"', time: '2 days ago' },
-  { id: 'a2', type: 'pool_resolved', text: 'Resolved "Super Bowl LX" — Lakers won 🏆', time: '1 week ago' },
-  { id: 'a3', type: 'follower', text: '12 new followers this week', time: '1 week ago' },
-];
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return `${Math.floor(days / 7)}w ago`;
+}
 
 export default function CreatorProfileContent() {
   const { user } = useAuth();
@@ -49,7 +57,7 @@ export default function CreatorProfileContent() {
   const creatorId = searchParams?.get('id');
   const fromDiscover = searchParams?.get('from') === 'discover';
 
-  const [profile, setProfile] = useState<CreatorProfile>(MOCK_CREATOR);
+  const [profile, setProfile] = useState<CreatorProfile>(EMPTY_CREATOR);
   const [isFollowing, setIsFollowing] = useState(false);
   const [activeTab, setActiveTab] = useState<'pools' | 'groups' | 'activity' | 'reputation'>('pools');
   const [loading, setLoading] = useState(false);
@@ -57,6 +65,8 @@ export default function CreatorProfileContent() {
   const [hasCreatorProfile, setHasCreatorProfile] = useState(false);
   const [isOwnProfile, setIsOwnProfile] = useState(false);
   const [creatorGroups, setCreatorGroups] = useState<{ id: string; name: string; memberCount: number; activeContracts: number }[]>([]);
+  const [creatorPools, setCreatorPools] = useState<{ id: string; name: string; participants: number; prize: string; status: string }[]>([]);
+  const [creatorActivity, setCreatorActivity] = useState<{ id: string; type: string; text: string; time: string }[]>([]);
 
   useEffect(() => {
     if (!user) return;
@@ -91,6 +101,43 @@ export default function CreatorProfileContent() {
           };
         }).filter((g: any) => g.id);
         setCreatorGroups(groups);
+
+        // Real pools created by this creator (replaces mock data)
+        const { data: poolsData } = await supabase
+          .from('pools')
+          .select('id, title, participant_count, stake_note, status')
+          .eq('creator_id', profileUserId)
+          .order('created_at', { ascending: false })
+          .limit(10);
+        setCreatorPools(
+          (poolsData ?? []).map((p: any) => ({
+            id: p.id,
+            name: p.title,
+            participants: p.participant_count ?? 0,
+            prize: p.stake_note || 'No stake set',
+            status: p.status === 'resolved' ? 'ended' : 'active',
+          }))
+        );
+
+        // Real recent activity by this creator (replaces mock data)
+        const { data: activityData } = await supabase
+          .from('activities')
+          .select('id, activity_type, metadata, created_at')
+          .eq('actor_id', profileUserId)
+          .order('created_at', { ascending: false })
+          .limit(10);
+        setCreatorActivity(
+          (activityData ?? []).map((a: any) => {
+            const label = ACTIVITY_LABELS[a.activity_type] ?? a.activity_type?.replace(/_/g, ' ') ?? 'did something';
+            const poolTitle = a.metadata?.pool_title || a.metadata?.title;
+            return {
+              id: a.id,
+              type: a.activity_type,
+              text: poolTitle ? `${label} "${poolTitle}"` : label,
+              time: timeAgo(a.created_at),
+            };
+          })
+        );
       } catch {}
       setLoading(false);
     };
@@ -216,7 +263,10 @@ export default function CreatorProfileContent() {
 
           {activeTab === 'pools' && (
             <div className="space-y-3">
-              {MOCK_TOP_POOLS.map((pool) => (
+              {creatorPools.length === 0 ? (
+                <p className="text-sm text-center py-8" style={{ color: 'var(--muted-foreground)' }}>No pools created yet.</p>
+              ) : (
+                creatorPools.map((pool) => (
                 <Link key={pool.id} href={`/contract-detail-screen?id=${pool.id}`} className="rounded-xl p-3 flex items-center gap-3 block" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
                   <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: pool.status === 'active' ? 'rgba(0,230,118,0.15)' : 'var(--elevated)' }}>
                     <Star size={18} style={{ color: pool.status === 'active' ? 'var(--success)' : 'var(--muted-foreground)' }} />
@@ -229,7 +279,8 @@ export default function CreatorProfileContent() {
                     {pool.status}
                   </span>
                 </Link>
-              ))}
+                ))
+              )}
             </div>
           )}
 
@@ -253,7 +304,10 @@ export default function CreatorProfileContent() {
 
           {activeTab === 'activity' && (
             <div className="space-y-3">
-              {MOCK_ACTIVITY.map((item) => (
+              {creatorActivity.length === 0 ? (
+                <p className="text-sm text-center py-8" style={{ color: 'var(--muted-foreground)' }}>No recent activity yet.</p>
+              ) : (
+                creatorActivity.map((item) => (
                 <div key={item.id} className="rounded-xl p-3 flex items-start gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
                   <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(124,92,255,0.15)' }}>
                     {item.type === 'pool_created' ? <Star size={14} style={{ color: 'var(--primary)' }} /> : item.type === 'follower' ? <Users size={14} style={{ color: 'var(--primary)' }} /> : <TrendingUp size={14} style={{ color: 'var(--primary)' }} />}
@@ -263,7 +317,8 @@ export default function CreatorProfileContent() {
                     <p className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>{item.time}</p>
                   </div>
                 </div>
-              ))}
+                ))
+              )}
             </div>
           )}
 

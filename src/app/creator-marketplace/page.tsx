@@ -21,105 +21,6 @@ interface CreatorCard {
   joined?: boolean;
 }
 
-const MOCK_CREATORS: CreatorCard[] = [
-  {
-    id: '1',
-    display_name: 'PoolMaster Pro',
-    tagline: 'Sports pools & bracket challenges 🏆',
-    is_verified: true,
-    follower_count: 4821,
-    public_pool_count: 87,
-    total_participants: 32400,
-    creator_score: 97.4,
-    activity_rank: 1,
-    recent_pools: 12,
-  },
-  {
-    id: '2',
-    display_name: 'BracketKing',
-    tagline: 'March Madness specialist since 2019',
-    is_verified: true,
-    follower_count: 3102,
-    public_pool_count: 54,
-    total_participants: 18900,
-    creator_score: 94.1,
-    activity_rank: 2,
-    recent_pools: 9,
-  },
-  {
-    id: '3',
-    display_name: 'SportsGuru',
-    tagline: 'NFL, NBA, MLB — all the big ones',
-    is_verified: false,
-    follower_count: 2478,
-    public_pool_count: 41,
-    total_participants: 14200,
-    creator_score: 91.8,
-    activity_rank: 3,
-    recent_pools: 7,
-  },
-  {
-    id: '4',
-    display_name: 'FantasyQueen',
-    tagline: 'Fantasy pools with real prizes 💰',
-    is_verified: true,
-    follower_count: 1987,
-    public_pool_count: 38,
-    total_participants: 11600,
-    creator_score: 89.5,
-    activity_rank: 4,
-    recent_pools: 11,
-  },
-  {
-    id: '5',
-    display_name: 'PoolNinja',
-    tagline: 'Stealth picks, big wins',
-    is_verified: false,
-    follower_count: 1543,
-    public_pool_count: 29,
-    total_participants: 8900,
-    creator_score: 86.2,
-    activity_rank: 5,
-    recent_pools: 6,
-  },
-  {
-    id: '6',
-    display_name: 'ChampionMaker',
-    tagline: 'Turning casual fans into champions',
-    is_verified: true,
-    follower_count: 1201,
-    public_pool_count: 22,
-    total_participants: 7100,
-    creator_score: 83.7,
-    activity_rank: 6,
-    recent_pools: 5,
-  },
-  {
-    id: '7',
-    display_name: 'PoolWizard',
-    tagline: 'Data-driven pool creation',
-    is_verified: false,
-    follower_count: 987,
-    public_pool_count: 18,
-    total_participants: 5400,
-    creator_score: 80.1,
-    activity_rank: 7,
-    recent_pools: 4,
-  },
-  {
-    id: '8',
-    display_name: 'RookieRiser',
-    tagline: 'New but climbing fast 🚀',
-    is_verified: false,
-    follower_count: 612,
-    public_pool_count: 11,
-    total_participants: 2800,
-    creator_score: 74.3,
-    activity_rank: 8,
-    recent_pools: 8,
-  },
-];
-
 type SortMode = 'activity' | 'followers' | 'pools' | 'score';
 
 const SORT_OPTIONS: { key: SortMode; label: string; icon: React.ReactNode }[] = [
@@ -140,7 +41,7 @@ function formatCount(n: number): string {
 export default function CreatorMarketplacePage() {
   const { user } = useAuth();
   const supabase = createClient();
-  const [creators, setCreators] = useState<CreatorCard[]>(MOCK_CREATORS);
+  const [creators, setCreators] = useState<CreatorCard[]>([]);
   const [sortMode, setSortMode] = useState<SortMode>('activity');
   const [searchQuery, setSearchQuery] = useState('');
   const [followedIds, setFollowedIds] = useState<Set<string>>(new Set());
@@ -155,7 +56,7 @@ export default function CreatorMarketplacePage() {
           .eq('is_public', true)
           .order('creator_score', { ascending: false })
           .limit(20);
-        if (data && data.length > 0) {
+        if (data) {
           setCreators(
             data.map((c, i) => ({
               ...c,
