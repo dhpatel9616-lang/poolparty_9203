@@ -704,10 +704,8 @@ export async function generateInviteLink(params: {
 // ─── Send Nudge Edge Function ─────────────────────────────────────────────────
 
 export async function sendNudge(params: {
-  to_user_id: string;
-  from_user_id: string;
-  pool_id?: string;
-  message?: string;
+  settlement_id: string;
+  nudge_type?: 'payment_reminder' | 'payment_confirmation';
 }) {
   const supabase = createClient();
   const { data, error } = await supabase.functions.invoke('send-nudge', {

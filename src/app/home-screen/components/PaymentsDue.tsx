@@ -15,18 +15,20 @@ export default function PaymentsDue() {
     (p) => p.settlement_status === 'pending' || p.settlement_status === 'claimed_paid' || p.settlement_status === 'overdue'
   );
 
-  const handleNudge = async (itemId: string, receiverId: string | null) => {
-    if (nudgedIds.has(itemId) || !user || !receiverId) return;
-    setNudgedIds((prev) => new Set([...prev, itemId]));
+  const handleNudge = async (settlementId: string) => {
+    if (nudgedIds.has(settlementId) || !user) return;
+    setNudgedIds((prev) => new Set([...prev, settlementId]));
     try {
-      await sendNudge({
-        to_user_id: receiverId,
-        from_user_id: user.id,
-        message: 'Friendly reminder to settle up on PoolParty!',
-      });
+      await sendNudge({ settlement_id: settlementId, nudge_type: 'payment_reminder' });
       toast.success('Nudge sent! 📲');
-    } catch {
-      toast.success('Nudge queued 📲');
+    } catch (err) {
+      console.error('Nudge failed', err);
+      toast.error('Could not send nudge — try again later');
+      setNudgedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(settlementId);
+        return next;
+      });
     }
   };
 
@@ -63,7 +65,6 @@ export default function PaymentsDue() {
           {unpaid.map((payment) => {
             const isOwedToMe = payment.recipient_id === user?.id;
             const isNudged = nudgedIds.has(payment.id);
-            const otherPartyId = isOwedToMe ? payment.payer_id : payment.recipient_id;
 
             return (
               <div key={payment.id} className="px-4 py-3">
@@ -110,7 +111,7 @@ export default function PaymentsDue() {
                       </span>
                     ) : isOwedToMe ? (
                       <button
-                        onClick={() => handleNudge(payment.id, otherPartyId)}
+                        onClick={() => handleNudge(payment.id)}
                         disabled={isNudged}
                         className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold transition-all active:scale-90"
                         style={{

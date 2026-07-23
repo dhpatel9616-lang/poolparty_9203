@@ -508,47 +508,12 @@ export function useUserTrustScoreRealtime(userId?: string) {
   return { scoreRecord, loading, error, scoreChanged, scoreDelta, refetch: fetchScore };
 }
 
-export async function invokeCalculateReturn(amount: number, weight: number) {
-  const supabase = createClient();
-  const { data, error } = await supabase.functions.invoke('calculate-return', {
-    body: { amount, weight },
-  });
-  if (error) throw error;
-  return data as { amount: number; weight: number; profit: number; totalReturn: number };
-}
-
-export async function invokeResolvePool(params: {
-  pool_id: string;
-  winning_outcome_id: string;
-  resolved_by: string;
-  evidence?: { text?: string; url?: string };
-}) {
-  const supabase = createClient();
-  const { data, error } = await supabase.functions.invoke('resolve-pool', {
-    body: params,
-  });
-  if (error) throw error;
-  return data;
-}
-
-export async function invokeUpdateTrustScore(params: {
-  user_id: string;
-  delta: number;
-  reason: string;
-  pool_id?: string;
-}) {
-  const supabase = createClient();
-  const { data, error } = await supabase.functions.invoke('update-trust-score', {
-    body: params,
-  });
-  if (error) throw error;
-  return data as {
-    success: boolean;
-    user_id: string;
-    score_before: number;
-    score_after: number;
-    delta: number;
-    tier: string;
-    reason: string;
-  };
-}
+// Note: invokeCalculateReturn, invokeResolvePool, and invokeUpdateTrustScore
+// wrappers were removed here — none had any call sites anywhere in the app.
+// Their calculations now happen inline (EntryModal's own payout math,
+// resolveContractWithPaymentNotifications in services.ts) and trust-score
+// updates happen automatically via the `on_settlement_status_change` DB
+// trigger on the `settlements` table. The underlying edge functions
+// (resolve-pool, calculate-return, update-trust-score) are still deployed
+// on Supabase but are now dead infrastructure — safe to delete via the
+// Supabase dashboard's Edge Functions page whenever convenient, no rush.
