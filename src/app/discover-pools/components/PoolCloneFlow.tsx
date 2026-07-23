@@ -97,7 +97,7 @@ export default function PoolCloneFlow({ template, onClose, onLaunched }: PoolClo
     <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ background: 'rgba(0,0,0,0.7)' }}>
       <div
         className="w-full max-w-[390px] rounded-t-3xl flex flex-col"
-        style={{ background: 'var(--background)', maxHeight: '92dvh', overflowY: 'auto' }}
+        style={{ background: 'var(--background)', maxHeight: '92dvh', overflowY: 'auto', paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
         {/* Handle */}
         <div className="flex justify-center pt-3 pb-1">

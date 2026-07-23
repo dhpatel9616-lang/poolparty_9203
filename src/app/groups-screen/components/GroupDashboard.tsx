@@ -62,7 +62,7 @@ function AdminApprovalPanel({ group, onClose }: { group: Group; onClose: () => v
     >
       <div
         className="w-full max-w-[390px] rounded-t-3xl flex flex-col"
-        style={{ background: 'var(--surface)', border: '1px solid var(--border)', maxHeight: '88dvh', animation: 'fadeInUp 250ms ease forwards' }}
+        style={{ background: 'var(--surface)', border: '1px solid var(--border)', maxHeight: '88dvh', paddingBottom: 'env(safe-area-inset-bottom)', animation: 'fadeInUp 250ms ease forwards' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="w-10 h-1 rounded-full mx-auto mt-3 mb-1 flex-shrink-0" style={{ background: 'var(--border)' }} />
@@ -220,7 +220,7 @@ function InviteModal({ group, onClose }: { group: Group; onClose: () => void }) 
     >
       <div
         className="w-full max-w-[390px] rounded-t-3xl flex flex-col"
-        style={{ background: 'var(--surface)', border: '1px solid var(--border)', maxHeight: '80dvh', animation: 'fadeInUp 250ms ease forwards' }}
+        style={{ background: 'var(--surface)', border: '1px solid var(--border)', maxHeight: '80dvh', paddingBottom: 'env(safe-area-inset-bottom)', animation: 'fadeInUp 250ms ease forwards' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="w-10 h-1 rounded-full mx-auto mt-3 mb-1 flex-shrink-0" style={{ background: 'var(--border)' }} />

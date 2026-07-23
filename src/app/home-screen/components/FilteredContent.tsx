@@ -8,6 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { createClient } from '@/lib/supabase/client';
 import { fetchUserDisputes, updateSettlementStatus } from '@/lib/supabase/services';
 import { useSettlementItemsRealtime } from '@/lib/supabase/realtime';
+import BottomSheet from '@/components/ui/BottomSheet';
 
 interface FilteredContentProps {
   filter: HomeFilter;
@@ -202,19 +203,9 @@ function YouOwePanel() {
         })}
       </div>
 
-      {showModal && currentPayment && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center"
-          style={{ background: 'rgba(0,0,0,0.7)' }}
-          onClick={() => setShowModal(null)}
-        >
-          <div
-            className="w-full max-w-[390px] rounded-t-3xl p-6"
-            style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: 'var(--border)' }} />
-            <h2 className="text-lg font-bold text-foreground mb-2">Mark as Paid</h2>
+      <BottomSheet isOpen={!!(showModal && currentPayment)} onClose={() => setShowModal(null)} title="Mark as Paid" maxHeightVh={70}>
+        {currentPayment && (
+          <>
             <p className="text-sm mb-4" style={{ color: 'var(--muted-foreground)' }}>
               Confirm you&apos;ve sent <span className="font-semibold text-foreground">${currentPayment.return_amount}</span> outside of PoolParty.
               PoolParty does not process or verify this payment.
@@ -240,16 +231,16 @@ function YouOwePanel() {
                 Cancel
               </button>
               <button
-                onClick={() => handleMarkPaid(showModal)}
+                onClick={() => handleMarkPaid(showModal!)}
                 className="flex-1 py-3 rounded-xl text-sm font-semibold"
                 style={{ background: 'var(--primary)', color: '#fff' }}
               >
                 Confirm
               </button>
             </div>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </BottomSheet>
     </>
   );
 }

@@ -148,7 +148,7 @@ export default function EntryModal({ contract, outcomeId, onClose }: EntryModalP
         </div>
 
         {/* Scrollable content */}
-        <div className="overflow-y-auto flex-1 px-6 pb-4">
+        <div className="overflow-y-auto flex-1 px-6" style={{ paddingBottom: confirmed ? 'calc(1rem + env(safe-area-inset-bottom))' : '1rem' }}>
           {confirmed ? (
             /* Confirmation State */
             <div className="space-y-4 py-2">
@@ -323,8 +323,8 @@ export default function EntryModal({ contract, outcomeId, onClose }: EntryModalP
         {/* Sticky bottom CTA */}
         {!confirmed && (
           <div
-            className="flex-shrink-0 px-6 pb-6 pt-3"
-            style={{ borderTop: '1px solid var(--border)', background: 'var(--surface)' }}
+            className="flex-shrink-0 px-6 pt-3"
+            style={{ borderTop: '1px solid var(--border)', background: 'var(--surface)', paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}
           >
             <button
               onClick={onSubmit}

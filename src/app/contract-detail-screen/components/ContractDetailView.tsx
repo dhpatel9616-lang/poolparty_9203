@@ -353,7 +353,7 @@ function AdminSheet({ contract, participants, onClose, onResolved }: { contract:
     >
       <div
         className="w-full max-w-[390px] rounded-t-3xl"
-        style={{ background: 'var(--surface)', maxHeight: '85dvh', overflowY: 'auto' }}
+        style={{ background: 'var(--surface)', maxHeight: '85dvh', overflowY: 'auto', paddingBottom: 'env(safe-area-inset-bottom)' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="w-10 h-1 rounded-full mx-auto mt-3 mb-1" style={{ background: 'var(--border)' }} />
