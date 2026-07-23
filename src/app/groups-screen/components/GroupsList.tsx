@@ -120,6 +120,7 @@ export default function GroupsList() {
           .insert({ group_id: newGroup.id, user_id: user.id, role: 'admin' });
         if (memberError) {
           console.error('Failed to add creator as group member:', memberError);
+          toast.error('Group created, but you were not added as a member. Contact support.');
         }
 
         const mapped = mapDbGroupToGroup(newGroup);
@@ -128,22 +129,7 @@ export default function GroupsList() {
         setSelectedGroup(mapped);
         toast.success(`"${data.name}" created! 🎉`);
       } else {
-        // If groups table doesn't exist yet, show optimistic UI
-        const optimistic: Group = {
-          id: `local-${Date.now()}`,
-          name: data.name,
-          emoji: data.emoji,
-          memberCount: 1,
-          activeContracts: 0,
-          totalContracts: 0,
-          members: [],
-          createdAt: new Date().toISOString(),
-          status: 'approved',
-        };
-        setGroups((prev) => [optimistic, ...prev]);
-        setCreatedGroup(optimistic);
-        setSelectedGroup(optimistic);
-        toast.success(`"${data.name}" created! 🎉`);
+        toast.error(error?.message || 'Failed to create group. Please try again.');
       }
     } catch {
       toast.error('Failed to create group. Please try again.');

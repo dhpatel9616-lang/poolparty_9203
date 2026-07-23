@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { toast } from 'sonner';
 import {
   X, ChevronRight, ChevronLeft, Copy, MessageSquare, Share2,
   QrCode, Users, Check, Rocket, Edit3, BadgeCheck,
@@ -13,7 +14,7 @@ import Icon from '@/components/ui/AppIcon';
 interface PoolCloneFlowProps {
   template: PoolTemplate;
   onClose: () => void;
-  onLaunched: () => void;
+  onLaunched: (poolId?: string) => void;
 }
 
 type Step = 'preview' | 'edit' | 'invite' | 'launch';
@@ -35,6 +36,7 @@ export default function PoolCloneFlow({ template, onClose, onLaunched }: PoolClo
   const [selectedInvites, setSelectedInvites] = useState<string[]>([]);
   const [isLaunching, setIsLaunching] = useState(false);
   const [launched, setLaunched] = useState(false);
+  const [launchedPoolId, setLaunchedPoolId] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
 
   const steps: Step[] = ['preview', 'edit', 'invite', 'launch'];
@@ -66,9 +68,57 @@ export default function PoolCloneFlow({ template, onClose, onLaunched }: PoolClo
   };
 
   const handleLaunch = async () => {
+    if (!user) {
+      toast.error('You need to be signed in to launch a pool.');
+      return;
+    }
     setIsLaunching(true);
     try {
-      if (user) {
+      // Parse "7 days" / "30 days" / "180 days" into a real entry deadline
+      const daysMatch = template.default_expiration?.match(/(\d+)/);
+      const days = daysMatch ? parseInt(daysMatch[1], 10) : 7;
+      const entryDeadline = new Date();
+      entryDeadline.setDate(entryDeadline.getDate() + days);
+
+      const options = (template.default_options as string[]) ?? [];
+      const contractType = options.length === 2 ? 'yes_no' : 'multi';
+
+      const { data: pool, error: poolError } = await supabase
+        .from('pools')
+        .insert({
+          title,
+          contract_type: contractType,
+          icon: template.icon,
+          pool_type: template.pool_type,
+          rules,
+          visibility: 'public',
+          entry_deadline: entryDeadline.toISOString(),
+          creator_id: user.id,
+          status: 'open',
+          source: 'template_clone',
+        })
+        .select()
+        .single();
+
+      if (poolError || !pool) {
+        toast.error(poolError?.message || 'Failed to launch pool. Please try again.');
+        setIsLaunching(false);
+        return;
+      }
+
+      // Real outcomes — fall back to Yes/No for templates with no preset
+      // options (bracket/fantasy/challenge types), so the pool is always
+      // actually joinable.
+      const outcomeLabels = options.length > 0 ? options : ['Yes', 'No'];
+      const { error: outcomeError } = await supabase.from('pool_outcomes').insert(
+        outcomeLabels.map((label) => ({ pool_id: pool.id, label, weight: 0 }))
+      );
+      if (outcomeError) {
+        toast.error('Pool created, but outcomes failed to save. Please edit the contract to add outcomes.');
+      }
+
+      // Best-effort analytics — track the clone/launch without blocking on it
+      try {
         await supabase.from('pool_template_clones').insert({
           template_id: template.id,
           user_id: user.id,
@@ -76,15 +126,18 @@ export default function PoolCloneFlow({ template, onClose, onLaunched }: PoolClo
           custom_rules: rules,
         });
         await supabase.rpc('increment_template_clone', { p_template_id: template.id });
+      } catch {
+        // non-fatal
       }
+
+      setLaunchedPoolId(pool.id);
       setLaunched(true);
-      setTimeout(() => onLaunched(), 1800);
-    } catch {
-      setLaunched(true);
-      setTimeout(() => onLaunched(), 1800);
-    } finally {
-      setIsLaunching(false);
+      setTimeout(() => onLaunched(pool.id), 1800);
+    } catch (err) {
+      console.error('Failed to launch pool', err);
+      toast.error('Failed to launch pool. Please check your connection and try again.');
     }
+    setIsLaunching(false);
   };
 
   const handleSkip = () => {

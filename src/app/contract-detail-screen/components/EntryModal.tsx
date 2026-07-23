@@ -4,11 +4,14 @@ import { toast } from 'sonner';
 import { useForm } from 'react-hook-form';
 import type { Contract } from '@/lib/mockData';
 import { X, AlertCircle, TrendingUp, Share2, Eye, CheckCircle2 } from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface EntryModalProps {
   contract: Contract;
   outcomeId: string;
   onClose: () => void;
+  onSuccess?: () => void;
 }
 
 const QUICK_AMOUNTS = [10, 25, 50, 100];
@@ -60,7 +63,8 @@ function ConfettiOverlay() {
   );
 }
 
-export default function EntryModal({ contract, outcomeId, onClose }: EntryModalProps) {
+export default function EntryModal({ contract, outcomeId, onClose, onSuccess }: EntryModalProps) {
+  const { user } = useAuth();
   const outcome = contract.outcomes.find((o) => o.id === outcomeId);
   const [amount, setAmount] = useState('25');
   const [submitting, setSubmitting] = useState(false);
@@ -83,19 +87,51 @@ export default function EntryModal({ contract, outcomeId, onClose }: EntryModalP
 
   const { profit, total } = calcReturn();
 
-  const onSubmit = useCallback(() => {
+  const onSubmit = useCallback(async () => {
     if (!numAmount || numAmount < 1) {
       toast.error('Enter a valid stake amount');
       return;
     }
+    if (!user) {
+      toast.error('You need to be signed in to join a contract');
+      return;
+    }
+    if (!outcomeId) {
+      toast.error('No outcome selected');
+      return;
+    }
     setSubmitting(true);
-    setTimeout(() => {
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from('pool_entries').insert({
+        pool_id: contract.id,
+        user_id: user.id,
+        outcome_id: outcomeId,
+        stake_amount: numAmount,
+      });
+
+      if (error) {
+        // Unique constraint on (pool_id, user_id) — one entry per person per pool
+        if (error.code === '23505') {
+          toast.error("You've already joined this contract.");
+        } else {
+          toast.error(error.message || 'Failed to join contract. Please try again.');
+        }
+        setSubmitting(false);
+        return;
+      }
+
       setSubmitting(false);
       setConfirmed(true);
       setShowConfetti(true);
+      onSuccess?.();
       setTimeout(() => setShowConfetti(false), 1500);
-    }, 1000);
-  }, [numAmount]);
+    } catch (err) {
+      console.error('Failed to submit entry', err);
+      toast.error('Failed to join contract. Please check your connection and try again.');
+      setSubmitting(false);
+    }
+  }, [numAmount, user, outcomeId, contract.id, onSuccess]);
 
   const handleShare = useCallback(() => {
     const text = `I just locked in "${outcome?.label}" on PoolParty! Staking $${numAmount} 🎱`;

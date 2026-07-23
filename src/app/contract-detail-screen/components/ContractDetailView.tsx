@@ -295,26 +295,122 @@ function timeAgo(ts: string) {
 }
 
 // Admin bottom sheet
-function AdminSheet({ contract, participants, onClose, onResolved }: { contract: Contract; participants: ContractParticipant[]; onClose: () => void; onResolved?: (outcomeId: string) => void }) {
+function AdminSheet({ contract, participants, onClose, onResolved, onStatusChanged }: { contract: Contract; participants: ContractParticipant[]; onClose: () => void; onResolved?: (outcomeId: string) => void; onStatusChanged?: () => void }) {
   const { user } = useAuth();
   const [showLockConfirm, setShowLockConfirm] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [showResolveSheet, setShowResolveSheet] = useState(false);
-  const [stakeNote, setStakeNote] = useState('$25 entry per person via Venmo');
+  const [stakeNote, setStakeNote] = useState(contract.stakeNote || '');
   const [editingStake, setEditingStake] = useState(false);
   const [resolving, setResolving] = useState(false);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
   const [selectedWinnerOutcome, setSelectedWinnerOutcome] = useState<string | null>(null);
+
+  const handleSaveStakeNote = async () => {
+    if (stakeNote === (contract.stakeNote || '')) return; // no change, skip the write
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from('pools')
+        .update({ stake_note: stakeNote, updated_at: new Date().toISOString() })
+        .eq('id', contract.id);
+      if (error) {
+        toast.error('Failed to save stake note.');
+        return;
+      }
+      onStatusChanged?.();
+    } catch {
+      toast.error('Failed to save stake note.');
+    }
+  };
+
+  const handleLockPool = async () => {
+    setUpdatingStatus(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from('pools')
+        .update({ status: 'locked', updated_at: new Date().toISOString() })
+        .eq('id', contract.id);
+      if (error) {
+        toast.error(error.message || 'Failed to lock pool.');
+        setUpdatingStatus(false);
+        return;
+      }
+      toast.success('Pool locked — no new entries can be added.');
+      onStatusChanged?.();
+      onClose();
+    } catch {
+      toast.error('Failed to lock pool. Please try again.');
+    }
+    setUpdatingStatus(false);
+  };
+
+  const handleCancelPool = async () => {
+    setUpdatingStatus(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from('pools')
+        .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+        .eq('id', contract.id);
+      if (error) {
+        toast.error(error.message || 'Failed to cancel pool.');
+        setUpdatingStatus(false);
+        return;
+      }
+
+      // Notify participants their pool was cancelled
+      const recipientIds = participants.map((p) => p.userId).filter((id) => id !== user?.id);
+      if (recipientIds.length > 0) {
+        await supabase.from('notifications').insert(
+          recipientIds.map((userId) => ({
+            user_id: userId,
+            type: 'pool_cancelled',
+            title: 'Contract cancelled',
+            body: `"${contract.title}" was cancelled by the creator.`,
+            metadata: { pool_id: contract.id },
+          }))
+        );
+      }
+
+      toast.success('Pool cancelled.');
+      onStatusChanged?.();
+      onClose();
+    } catch {
+      toast.error('Failed to cancel pool. Please try again.');
+    }
+    setUpdatingStatus(false);
+  };
 
   const handleResolve = async () => {
     if (!selectedWinnerOutcome || !user?.id) return;
     setResolving(true);
     try {
+      const supabase = createClient();
+
+      // Persist the resolution itself — this was previously never written to
+      // the database at all; the UI only looked "resolved" via local state
+      // that reset on every reload.
+      const { error: resolveError } = await supabase
+        .from('pools')
+        .update({ status: 'resolved', winning_outcome_id: selectedWinnerOutcome, updated_at: new Date().toISOString() })
+        .eq('id', contract.id);
+
+      if (resolveError) {
+        toast.error(resolveError.message || 'Failed to resolve. Please try again.');
+        setResolving(false);
+        return;
+      }
+
       // Real winners/losers, derived from actual pool_entries — not mock data.
       const winners = participants.filter((p) => p.outcomeId === selectedWinnerOutcome);
       const losers = participants.filter((p) => p.outcomeId !== selectedWinnerOutcome);
 
       if (winners.length === 0) {
-        toast.error('No one picked that outcome — nothing to settle.');
+        toast.success('Contract resolved — no one picked the winning outcome, so nothing to settle.');
+        onResolved?.(selectedWinnerOutcome);
+        onClose();
         setResolving(false);
         return;
       }
@@ -411,7 +507,7 @@ function AdminSheet({ contract, participants, onClose, onResolved }: { contract:
                   <p className="text-sm font-semibold text-foreground mb-2">Lock now? No new entries after this point.</p>
                   <div className="flex gap-2">
                     <button onClick={() => setShowLockConfirm(false)} className="flex-1 py-2 rounded-lg text-xs font-semibold" style={{ background: 'var(--surface)', color: 'var(--foreground)', border: '1px solid var(--border)' }}>Cancel</button>
-                    <button onClick={onClose} className="flex-1 py-2 rounded-lg text-xs font-semibold" style={{ background: 'var(--primary)', color: '#fff' }}>Confirm Lock</button>
+                    <button disabled={updatingStatus} onClick={handleLockPool} className="flex-1 py-2 rounded-lg text-xs font-semibold" style={{ background: 'var(--primary)', color: '#fff', opacity: updatingStatus ? 0.6 : 1 }}>{updatingStatus ? 'Locking...' : 'Confirm Lock'}</button>
                   </div>
                 </div>
               )}
@@ -423,7 +519,7 @@ function AdminSheet({ contract, participants, onClose, onResolved }: { contract:
                   value={stakeNote}
                   onChange={(e) => setStakeNote(e.target.value)}
                   onFocus={() => setEditingStake(true)}
-                  onBlur={() => setEditingStake(false)}
+                  onBlur={() => { setEditingStake(false); handleSaveStakeNote(); }}
                   className="w-full bg-transparent text-sm text-foreground outline-none"
                 />
               </div>
@@ -442,7 +538,7 @@ function AdminSheet({ contract, participants, onClose, onResolved }: { contract:
                   <p className="text-sm font-semibold text-foreground mb-2">Cancel this pool? All participants will be notified.</p>
                   <div className="flex gap-2">
                     <button onClick={() => setShowCancelConfirm(false)} className="flex-1 py-2 rounded-lg text-xs font-semibold" style={{ background: 'var(--elevated)', color: 'var(--foreground)', border: '1px solid var(--border)' }}>Keep Pool</button>
-                    <button onClick={onClose} className="flex-1 py-2 rounded-lg text-xs font-semibold" style={{ background: 'var(--social)', color: '#fff' }}>Cancel Pool</button>
+                    <button disabled={updatingStatus} onClick={handleCancelPool} className="flex-1 py-2 rounded-lg text-xs font-semibold" style={{ background: 'var(--social)', color: '#fff', opacity: updatingStatus ? 0.6 : 1 }}>{updatingStatus ? 'Cancelling...' : 'Cancel Pool'}</button>
                   </div>
                 </div>
               )}
@@ -619,6 +715,7 @@ export default function ContractDetailView() {
   const [contract, setContract] = useState<Contract>(EMPTY_CONTRACT);
   const [contractLoading, setContractLoading] = useState(true);
   const [contractNotFound, setContractNotFound] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     if (!poolId) {
@@ -692,7 +789,7 @@ export default function ContractDetailView() {
       setContractLoading(false);
     };
     loadContract();
-  }, [poolId]);
+  }, [poolId, refreshKey]);
 
   const [showEntry, setShowEntry] = useState(false);
   const [selectedOutcome, setSelectedOutcome] = useState<string | null>(null);
@@ -713,7 +810,7 @@ export default function ContractDetailView() {
       .then((data) => { if (!cancelled) setParticipants(data); })
       .catch((err) => console.error('Failed to load participants', err));
     return () => { cancelled = true; };
-  }, [contract.id]);
+  }, [contract.id, refreshKey]);
 
   // Real-time contract subscription
   const { contract: liveContract } = useContractRealtime(contract.id);
@@ -830,6 +927,7 @@ export default function ContractDetailView() {
 
   const handleAdminResolved = (outcomeId: string) => {
     setResolvedWinnerOutcomeId(outcomeId);
+    setRefreshKey((k) => k + 1);
     // Show celebration if user's pick won
     if (outcomeId === userPickOutcomeId) {
       setTimeout(() => setShowWinCelebration(true), 400);
@@ -1214,6 +1312,7 @@ export default function ContractDetailView() {
           contract={contract}
           outcomeId={selectedOutcome}
           onClose={() => setShowEntry(false)}
+          onSuccess={() => setRefreshKey((k) => k + 1)}
         />
       )}
 
@@ -1223,6 +1322,7 @@ export default function ContractDetailView() {
           participants={participants}
           onClose={() => setShowAdmin(false)}
           onResolved={handleAdminResolved}
+          onStatusChanged={() => setRefreshKey((k) => k + 1)}
         />
       )}
 

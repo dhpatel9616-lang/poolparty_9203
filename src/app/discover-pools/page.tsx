@@ -527,7 +527,7 @@ export default function DiscoverPoolsPage() {
       <PoolCloneFlow
         template={cloneTarget}
         onClose={() => setCloneTarget(null)}
-        onLaunched={() => {setCloneTarget(null);toast.success('Pool created!');router.push('/create-screen');}} />
+        onLaunched={(poolId) => {setCloneTarget(null);toast.success('Pool created!');router.push(poolId ? `/contract-detail-screen?id=${poolId}` : '/discover-pools');}} />
 
       }
       {seeAllTarget &&

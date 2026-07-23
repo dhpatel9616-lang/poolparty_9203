@@ -3,7 +3,9 @@ import React, { useState, useEffect } from 'react';
 import type { Group } from '@/lib/mockData';
 import { fetchGroupContracts, type GroupContractSummary } from '@/lib/supabase/services';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, FileText, CreditCard, AlertTriangle, Users, Trophy, ShieldOff, UserPlus, Crown, Shield, User, X, Settings, CheckCircle, XCircle, Snowflake, Link as LinkIcon, MessageCircle } from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
+import { ArrowLeft, FileText, CreditCard, AlertTriangle, Users, Trophy, ShieldOff, UserPlus, Crown, Shield, User, X, Link as LinkIcon, MessageCircle } from 'lucide-react';
 import StatusBadge from '@/components/ui/StatusBadge';
 import TrustBadge from '@/components/ui/TrustBadge';
 import { toast } from 'sonner';
@@ -29,164 +31,11 @@ interface GroupDashboardProps {
   onBack: () => void;
 }
 
-const CURRENT_USER_ID = 'user-001';
+// (CURRENT_USER_ID removed — was hardcoded to a fake 'user-001', meaning
+// owner-only controls silently never appeared for any real user. Now
+// derived from the real signed-in user + the group's real creator_id.)
 
 // Admin approval panel
-function AdminApprovalPanel({ group, onClose }: { group: Group; onClose: () => void }) {
-  const [visibility, setVisibility] = useState<'public' | 'private' | 'invite_only' | 'approval_required'>('invite_only');
-  const [requireApproval, setRequireApproval] = useState(false);
-  const [frozen, setFrozen] = useState(false);
-  const [pendingApprovals] = useState([
-    { id: 'req-1', name: 'Alex Kim', handle: '@alexk', avatar: 'AK', trustScore: 720 },
-    { id: 'req-2', name: 'Sam Torres', handle: '@samtor', avatar: 'ST', trustScore: 580 },
-  ]);
-
-  const handleApprove = (id: string, name: string) => {
-    toast.success(`${name} approved!`);
-  };
-
-  const handleReject = (id: string, name: string) => {
-    toast.success(`${name} rejected`);
-  };
-
-  const handleFreeze = () => {
-    setFrozen(!frozen);
-    toast.success(frozen ? 'Pool unfrozen' : 'Pool frozen — no new activity allowed');
-  };
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center"
-      style={{ background: 'rgba(0,0,0,0.7)' }}
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-[390px] rounded-t-3xl flex flex-col"
-        style={{ background: 'var(--surface)', border: '1px solid var(--border)', maxHeight: '88dvh', paddingBottom: 'env(safe-area-inset-bottom)', animation: 'fadeInUp 250ms ease forwards' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="w-10 h-1 rounded-full mx-auto mt-3 mb-1 flex-shrink-0" style={{ background: 'var(--border)' }} />
-        <div className="flex items-center justify-between px-5 py-3 border-b flex-shrink-0" style={{ borderColor: 'var(--border)' }}>
-          <h3 className="text-base font-bold text-foreground flex items-center gap-2">
-            <Settings size={16} style={{ color: 'var(--primary)' }} />
-            Group Admin
-          </h3>
-          <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: 'var(--elevated)' }}>
-            <X size={14} style={{ color: 'var(--muted-foreground)' }} />
-          </button>
-        </div>
-
-        <div className="overflow-y-auto flex-1 px-4 py-4 space-y-5 pb-8">
-          {/* Visibility */}
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--muted-foreground)' }}>Group Visibility</p>
-            <div className="grid grid-cols-2 gap-2">
-              {(['public', 'private', 'invite_only', 'approval_required'] as const).map((v) => (
-                <button
-                  key={v}
-                  onClick={() => setVisibility(v)}
-                  className="py-2.5 px-3 rounded-xl text-xs font-semibold transition-all active:scale-95"
-                  style={{
-                    background: visibility === v ? 'rgba(124,92,255,0.15)' : 'var(--elevated)',
-                    color: visibility === v ? 'var(--primary)' : 'var(--muted-foreground)',
-                    border: visibility === v ? '1px solid rgba(124,92,255,0.4)' : '1px solid var(--border)',
-                  }}
-                >
-                  {v === 'invite_only' ? 'Invite Only' : v === 'approval_required' ? 'Approval Required' : v.charAt(0).toUpperCase() + v.slice(1)}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Admin Controls */}
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--muted-foreground)' }}>Admin Controls</p>
-            <div className="space-y-2">
-              <div
-                className="flex items-center justify-between px-4 py-3 rounded-xl"
-                style={{ background: 'var(--elevated)', border: '1px solid var(--border)' }}
-              >
-                <div>
-                  <p className="text-sm font-medium text-foreground">Require Approval to Join</p>
-                  <p className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>Admins must approve new members</p>
-                </div>
-                <button
-                  onClick={() => setRequireApproval(!requireApproval)}
-                  className="relative w-11 h-6 rounded-full transition-colors flex-shrink-0"
-                  style={{ background: requireApproval ? 'var(--primary)' : 'var(--elevated)', border: '1px solid var(--border)' }}
-                >
-                  <span
-                    className="absolute top-0.5 w-5 h-5 rounded-full transition-transform"
-                    style={{ background: '#fff', transform: requireApproval ? 'translateX(22px)' : 'translateX(2px)' }}
-                  />
-                </button>
-              </div>
-
-              <button
-                onClick={handleFreeze}
-                className="w-full py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all active:scale-95"
-                style={{
-                  background: frozen ? 'rgba(0,82,255,0.1)' : 'rgba(255,200,87,0.1)',
-                  color: frozen ? '#0052FF' : 'var(--warning)',
-                  border: `1px solid ${frozen ? 'rgba(0,82,255,0.3)' : 'rgba(255,200,87,0.3)'}`,
-                }}
-              >
-                <Snowflake size={14} />
-                {frozen ? 'Unfreeze Group' : 'Freeze Group'}
-              </button>
-            </div>
-          </div>
-
-          {/* Pending Approvals */}
-          {pendingApprovals.length > 0 && (
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--muted-foreground)' }}>
-                Pending Approvals ({pendingApprovals.length})
-              </p>
-              <div className="space-y-2">
-                {pendingApprovals.map((req) => (
-                  <div
-                    key={req.id}
-                    className="rounded-xl p-3 flex items-center gap-3"
-                    style={{ background: 'var(--elevated)', border: '1px solid var(--border)' }}
-                  >
-                    <div
-                      className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0"
-                      style={{ background: 'rgba(124,92,255,0.15)', color: 'var(--primary)' }}
-                    >
-                      {req.avatar}
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-semibold text-foreground">{req.name}</p>
-                      <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Trust: {req.trustScore}</p>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleApprove(req.id, req.name)}
-                        className="w-8 h-8 rounded-lg flex items-center justify-center"
-                        style={{ background: 'rgba(0,230,118,0.15)' }}
-                      >
-                        <CheckCircle size={16} style={{ color: 'var(--success)' }} />
-                      </button>
-                      <button
-                        onClick={() => handleReject(req.id, req.name)}
-                        className="w-8 h-8 rounded-lg flex items-center justify-center"
-                        style={{ background: 'rgba(255,77,141,0.15)' }}
-                      >
-                        <XCircle size={16} style={{ color: 'var(--social)' }} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // Invite modal
 function InviteModal({ group, onClose }: { group: Group; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
@@ -287,18 +136,22 @@ function InviteModal({ group, onClose }: { group: Group; onClose: () => void }) 
 
 export default function GroupDashboard({ group, onBack }: GroupDashboardProps) {
   const router = useRouter();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<GroupTab>('contracts');
   const [showInvite, setShowInvite] = useState(false);
-  const [showAdmin, setShowAdmin] = useState(false);
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [leavingOrDeleting, setLeavingOrDeleting] = useState(false);
   const [blacklistedIds, setBlacklistedIds] = useState<Set<string>>(new Set());
   const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
   const [groupContracts, setGroupContracts] = useState<GroupContractSummary[]>([]);
   const [contractsLoading, setContractsLoading] = useState(true);
-  const isOwner = group.members[0]?.userId === CURRENT_USER_ID;
+  const [groupCreatorId, setGroupCreatorId] = useState<string | null>(null);
+  const isOwner = !!user?.id && user.id === groupCreatorId;
 
-  // Real contracts for this group (replaces mock data filter)
+  // Real contracts for this group (replaces mock data), plus the group's
+  // real creator_id (isOwner previously compared against a hardcoded fake
+  // user id, so owner-only controls never appeared for any real user).
   useEffect(() => {
     let cancelled = false;
     setContractsLoading(true);
@@ -306,6 +159,11 @@ export default function GroupDashboard({ group, onBack }: GroupDashboardProps) {
       .then((data) => { if (!cancelled) setGroupContracts(data); })
       .catch((err) => console.error('Failed to load group contracts', err))
       .finally(() => { if (!cancelled) setContractsLoading(false); });
+
+    const supabase = createClient();
+    supabase.from('groups').select('creator_id').eq('id', group.id).maybeSingle()
+      .then(({ data }) => { if (!cancelled && data) setGroupCreatorId(data.creator_id); });
+
     return () => { cancelled = true; };
   }, [group.id]);
 
@@ -338,15 +196,40 @@ export default function GroupDashboard({ group, onBack }: GroupDashboardProps) {
     return 'Member';
   };
 
-  const handleRemoveMember = (userId: string, name: string) => {
+  const handleRemoveMember = async (userId: string, name: string) => {
     setRemovedIds((prev) => new Set([...prev, userId]));
-    toast.success(`${name} removed from group`);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from('group_members').delete().eq('group_id', group.id).eq('user_id', userId);
+      if (error) {
+        toast.error(`Failed to remove ${name}.`);
+        setRemovedIds((prev) => { const next = new Set(prev); next.delete(userId); return next; });
+        return;
+      }
+      toast.success(`${name} removed from group`);
+    } catch {
+      toast.error(`Failed to remove ${name}.`);
+      setRemovedIds((prev) => { const next = new Set(prev); next.delete(userId); return next; });
+    }
   };
 
-  const handleBlacklist = (userId: string, name: string) => {
+  const handleBlacklist = async (userId: string, name: string) => {
+    // Note: there's no dedicated blacklist table yet, so this removes
+    // membership the same way "Remove" does — it does not yet prevent
+    // the person from being re-invited or rejoining via a fresh invite link.
     setBlacklistedIds((prev) => new Set([...prev, userId]));
     setRemovedIds((prev) => new Set([...prev, userId]));
-    toast.success(`${name} blacklisted`);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from('group_members').delete().eq('group_id', group.id).eq('user_id', userId);
+      if (error) {
+        toast.error(`Failed to blacklist ${name}.`);
+        return;
+      }
+      toast.success(`${name} removed and blacklisted from this group`);
+    } catch {
+      toast.error(`Failed to blacklist ${name}.`);
+    }
   };
 
   return (
@@ -366,15 +249,6 @@ export default function GroupDashboard({ group, onBack }: GroupDashboardProps) {
             <h1 className="text-lg font-bold text-foreground">{group.name}</h1>
           </div>
           <div className="flex items-center gap-2">
-            {isOwner && (
-              <button
-                onClick={() => setShowAdmin(true)}
-                className="w-9 h-9 rounded-xl flex items-center justify-center"
-                style={{ background: 'rgba(124,92,255,0.15)', border: '1px solid rgba(124,92,255,0.3)' }}
-              >
-                <Settings size={16} style={{ color: 'var(--primary)' }} />
-              </button>
-            )}
             <button
               onClick={() => setShowInvite(true)}
               className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-semibold"
@@ -508,7 +382,7 @@ export default function GroupDashboard({ group, onBack }: GroupDashboardProps) {
                       tier={member.trustScore >= 800 ? 'Excellent' : member.trustScore >= 600 ? 'Good' : member.trustScore >= 400 ? 'Risky' : 'Unreliable'}
                       size="sm"
                     />
-                    {isOwner && member.userId !== CURRENT_USER_ID && (
+                    {isOwner && member.userId !== user?.id && (
                       <div className="flex gap-1">
                         <button
                           onClick={() => handleRemoveMember(member.userId, member.name)}
@@ -622,7 +496,6 @@ export default function GroupDashboard({ group, onBack }: GroupDashboardProps) {
 
       {/* Modals */}
       {showInvite && <InviteModal group={group} onClose={() => setShowInvite(false)} />}
-      {showAdmin && <AdminApprovalPanel group={group} onClose={() => setShowAdmin(false)} />}
 
       {/* Leave modal */}
       {showLeaveModal && (
@@ -632,7 +505,32 @@ export default function GroupDashboard({ group, onBack }: GroupDashboardProps) {
             <p className="text-sm mb-4" style={{ color: 'var(--muted-foreground)' }}>You'll need a new invite to rejoin.</p>
             <div className="flex gap-2">
               <button onClick={() => setShowLeaveModal(false)} className="flex-1 py-2.5 rounded-xl text-sm font-semibold" style={{ background: 'var(--elevated)', color: 'var(--foreground)' }}>Cancel</button>
-              <button onClick={() => { setShowLeaveModal(false); onBack(); }} className="flex-1 py-2.5 rounded-xl text-sm font-semibold" style={{ background: 'var(--social)', color: '#fff' }}>Leave</button>
+              <button
+                disabled={leavingOrDeleting}
+                onClick={async () => {
+                  if (!user?.id) return;
+                  setLeavingOrDeleting(true);
+                  try {
+                    const supabase = createClient();
+                    const { error } = await supabase.from('group_members').delete().eq('group_id', group.id).eq('user_id', user.id);
+                    if (error) {
+                      toast.error(error.message || 'Failed to leave group.');
+                      setLeavingOrDeleting(false);
+                      return;
+                    }
+                    setShowLeaveModal(false);
+                    toast.success('Left the group.');
+                    onBack();
+                  } catch {
+                    toast.error('Failed to leave group.');
+                  }
+                  setLeavingOrDeleting(false);
+                }}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold"
+                style={{ background: 'var(--social)', color: '#fff', opacity: leavingOrDeleting ? 0.6 : 1 }}
+              >
+                {leavingOrDeleting ? 'Leaving...' : 'Leave'}
+              </button>
             </div>
           </div>
         </div>
@@ -646,7 +544,31 @@ export default function GroupDashboard({ group, onBack }: GroupDashboardProps) {
             <p className="text-sm mb-4" style={{ color: 'var(--muted-foreground)' }}>This action cannot be undone. All members will be removed.</p>
             <div className="flex gap-2">
               <button onClick={() => setShowDeleteModal(false)} className="flex-1 py-2.5 rounded-xl text-sm font-semibold" style={{ background: 'var(--elevated)', color: 'var(--foreground)' }}>Cancel</button>
-              <button onClick={() => { setShowDeleteModal(false); onBack(); }} className="flex-1 py-2.5 rounded-xl text-sm font-semibold" style={{ background: 'var(--social)', color: '#fff' }}>Delete</button>
+              <button
+                disabled={leavingOrDeleting}
+                onClick={async () => {
+                  setLeavingOrDeleting(true);
+                  try {
+                    const supabase = createClient();
+                    const { error } = await supabase.from('groups').delete().eq('id', group.id);
+                    if (error) {
+                      toast.error(error.message || 'Failed to delete group.');
+                      setLeavingOrDeleting(false);
+                      return;
+                    }
+                    setShowDeleteModal(false);
+                    toast.success('Group deleted.');
+                    onBack();
+                  } catch {
+                    toast.error('Failed to delete group.');
+                  }
+                  setLeavingOrDeleting(false);
+                }}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold"
+                style={{ background: 'var(--social)', color: '#fff', opacity: leavingOrDeleting ? 0.6 : 1 }}
+              >
+                {leavingOrDeleting ? 'Deleting...' : 'Delete'}
+              </button>
             </div>
           </div>
         </div>
