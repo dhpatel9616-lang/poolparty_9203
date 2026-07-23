@@ -15,6 +15,12 @@ export interface SettlementItem {
   status: 'unpaid' | 'paid' | 'confirmed' | 'disputed' | 'waived';
   created_at: string;
   updated_at?: string;
+  // Populated at resolution time by resolveContractWithPaymentNotifications —
+  // real columns on settlement_items, just missing from this type previously.
+  pool_title?: string;
+  payer_name?: string;
+  receiver_name?: string;
+  winner_payment_methods?: { id: string; type: string; handle: string }[];
 }
 
 export interface ActivityRecord {

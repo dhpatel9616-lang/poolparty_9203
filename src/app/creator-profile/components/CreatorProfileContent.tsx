@@ -35,11 +35,6 @@ const MOCK_TOP_POOLS = [
   { id: '4', name: 'March Madness 2026', participants: 456, prize: '$2,000', status: 'ended' },
 ];
 
-const MOCK_GROUPS = [
-  { id: 'g1', name: 'Sports Fanatics', memberCount: 24, activeContracts: 3 },
-  { id: 'g2', name: 'Crypto Predictors', memberCount: 12, activeContracts: 1 },
-];
-
 const MOCK_ACTIVITY = [
   { id: 'a1', type: 'pool_created', text: 'Created "NBA Finals 2026"', time: '2 days ago' },
   { id: 'a2', type: 'pool_resolved', text: 'Resolved "Super Bowl LX" — Lakers won 🏆', time: '1 week ago' },
@@ -61,15 +56,17 @@ export default function CreatorProfileContent() {
   const [becomingCreator, setBecomingCreator] = useState(false);
   const [hasCreatorProfile, setHasCreatorProfile] = useState(false);
   const [isOwnProfile, setIsOwnProfile] = useState(false);
+  const [creatorGroups, setCreatorGroups] = useState<{ id: string; name: string; memberCount: number; activeContracts: number }[]>([]);
 
   useEffect(() => {
     if (!user) return;
     const fetchProfile = async () => {
       setLoading(true);
       try {
+        let profileUserId = user.id;
         if (creatorId) {
           const { data } = await supabase.from('creator_profiles').select('*').eq('id', creatorId).single();
-          if (data) setProfile(data);
+          if (data) { setProfile(data); profileUserId = data.user_id; }
           const { data: followData } = await supabase.from('creator_follows').select('id').eq('follower_id', user.id).eq('creator_id', creatorId).single();
           setIsFollowing(!!followData);
           setIsOwnProfile(false);
@@ -78,6 +75,22 @@ export default function CreatorProfileContent() {
           if (data) { setProfile(data); setHasCreatorProfile(true); }
           setIsOwnProfile(true);
         }
+
+        // Real groups this creator belongs to (replaces mock data)
+        const { data: memberships } = await supabase
+          .from('group_members')
+          .select('group_id, group:group_id ( id, name, active_pool_count, member_count )')
+          .eq('user_id', profileUserId);
+        const groups = (memberships ?? []).map((m: any) => {
+          const g = Array.isArray(m.group) ? m.group[0] : m.group;
+          return {
+            id: g?.id ?? m.group_id,
+            name: g?.name ?? 'Group',
+            memberCount: g?.member_count ?? 0,
+            activeContracts: g?.active_pool_count ?? 0,
+          };
+        }).filter((g: any) => g.id);
+        setCreatorGroups(groups);
       } catch {}
       setLoading(false);
     };
@@ -222,7 +235,10 @@ export default function CreatorProfileContent() {
 
           {activeTab === 'groups' && (
             <div className="space-y-3">
-              {MOCK_GROUPS.map((group) => (
+              {creatorGroups.length === 0 ? (
+                <p className="text-sm text-center py-8" style={{ color: 'var(--muted-foreground)' }}>No groups yet.</p>
+              ) : (
+                creatorGroups.map((group) => (
                 <div key={group.id} className="rounded-xl p-3 flex items-center gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
                   <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0" style={{ background: 'var(--elevated)' }}>🏆</div>
                   <div className="flex-1">
@@ -230,7 +246,8 @@ export default function CreatorProfileContent() {
                     <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{group.memberCount} members · {group.activeContracts} active</p>
                   </div>
                 </div>
-              ))}
+                ))
+              )}
             </div>
           )}
 

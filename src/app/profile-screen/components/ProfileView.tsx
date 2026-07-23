@@ -8,13 +8,14 @@ import { Settings, Share2, Network, Trophy, Shield, Gavel, Star, BarChart2, Wall
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
-import { fetchCurrentUserProfile, fetchAccountabilityScore, fetchUserBadges, fetchReliabilityHistory } from '@/lib/supabase/services';
+import { fetchCurrentUserProfile, fetchAccountabilityScore, fetchUserBadges, fetchReliabilityHistory, fetchSettlementItems } from '@/lib/supabase/services';
 import { useUserTrustScoreRealtime } from '@/lib/supabase/realtime';
 import PaymentMethodsManager from './PaymentMethodsManager';
 import SettlementBadges, { SettlementBadgeMetrics } from '@/components/ui/SettlementBadges';
 import { createClient } from '@/lib/supabase/client';
+import type { TrustTier } from '@/lib/mockData';
 
-const TIER_MAP: Record<string, string> = {
+const TIER_MAP: Record<string, TrustTier> = {
   bronze: 'Risky',
   silver: 'Good',
   gold: 'Good',
@@ -30,6 +31,7 @@ export default function ProfileView() {
   const [badges, setBadges] = useState<any[]>([]);
   const [history, setHistory] = useState<any[]>([]);
   const [reputation, setReputation] = useState<SettlementBadgeMetrics | null>(null);
+  const [unpaidCount, setUnpaidCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   // Real-time trust score subscription
@@ -44,12 +46,14 @@ export default function ProfileView() {
       fetchUserBadges(user.id),
       fetchReliabilityHistory(user.id),
       supabase.from('user_reputation').select('*').eq('user_id', user.id).maybeSingle(),
-    ]).then(([p, s, b, h, repRes]) => {
+      fetchSettlementItems(user.id),
+    ]).then(([p, s, b, h, repRes, settlements]) => {
       setProfile(p);
       setScore(s);
       setBadges(b);
       setHistory(h);
       setReputation((repRes as any).data ?? null);
+      setUnpaidCount((settlements as any[]).filter((i) => i.payer_id === user.id && i.status === 'unpaid').length);
       setLoading(false);
     });
   }, [user]);
@@ -104,6 +108,9 @@ export default function ProfileView() {
     wins: score?.completed_contracts ?? 0,
     losses: score?.disputed_contracts ?? 0,
     pending: (score?.total_contracts ?? 0) - (score?.completed_contracts ?? 0) - (score?.disputed_contracts ?? 0),
+    activeContracts: (score?.total_contracts ?? 0) - (score?.completed_contracts ?? 0) - (score?.disputed_contracts ?? 0),
+    disputes: score?.disputed_contracts ?? 0,
+    unpaidCount,
     joinDate,
     badges: badges.map((b: any) => b.badge?.badge_name ?? b.badge_name ?? '').filter(Boolean),
   };
@@ -199,7 +206,7 @@ export default function ProfileView() {
           </Link>
         ))}
       </div>
-      {badges.length > 0 && <BadgeGrid user={userForComponents} />}
+      {badges.length > 0 && <BadgeGrid badges={userForComponents.badges} />}
       {/* Settlement Badges */}
       <div
         className="rounded-2xl p-4"

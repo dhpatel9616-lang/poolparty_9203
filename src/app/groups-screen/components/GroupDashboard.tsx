@@ -1,7 +1,8 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import type { Group } from '@/lib/mockData';
-import { MOCK_CONTRACTS } from '@/lib/mockData';
+import { fetchGroupContracts, type GroupContractSummary } from '@/lib/supabase/services';
+import { useRouter } from 'next/navigation';
 import { ArrowLeft, FileText, CreditCard, AlertTriangle, Users, Trophy, ShieldOff, UserPlus, Crown, Shield, User, X, Settings, CheckCircle, XCircle, Snowflake, Link as LinkIcon, MessageCircle } from 'lucide-react';
 import StatusBadge from '@/components/ui/StatusBadge';
 import TrustBadge from '@/components/ui/TrustBadge';
@@ -285,6 +286,7 @@ function InviteModal({ group, onClose }: { group: Group; onClose: () => void }) 
 }
 
 export default function GroupDashboard({ group, onBack }: GroupDashboardProps) {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<GroupTab>('contracts');
   const [showInvite, setShowInvite] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
@@ -292,8 +294,20 @@ export default function GroupDashboard({ group, onBack }: GroupDashboardProps) {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [blacklistedIds, setBlacklistedIds] = useState<Set<string>>(new Set());
   const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
-  const groupContracts = MOCK_CONTRACTS.filter((c) => c.groupId === group.id);
+  const [groupContracts, setGroupContracts] = useState<GroupContractSummary[]>([]);
+  const [contractsLoading, setContractsLoading] = useState(true);
   const isOwner = group.members[0]?.userId === CURRENT_USER_ID;
+
+  // Real contracts for this group (replaces mock data filter)
+  useEffect(() => {
+    let cancelled = false;
+    setContractsLoading(true);
+    fetchGroupContracts(group.id)
+      .then((data) => { if (!cancelled) setGroupContracts(data); })
+      .catch((err) => console.error('Failed to load group contracts', err))
+      .finally(() => { if (!cancelled) setContractsLoading(false); });
+    return () => { cancelled = true; };
+  }, [group.id]);
 
   // Real-time group members subscription
   const { newMemberAlert, members: liveMembers } = useGroupMembersRealtime(group.id);
@@ -414,7 +428,11 @@ export default function GroupDashboard({ group, onBack }: GroupDashboardProps) {
         {/* Tab content */}
         {activeTab === 'contracts' && (
           <div className="space-y-3">
-            {groupContracts.length === 0 ? (
+            {contractsLoading ? (
+              <div className="text-center py-12">
+                <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>Loading contracts...</p>
+              </div>
+            ) : groupContracts.length === 0 ? (
               <div className="text-center py-12">
                 <FileText size={32} className="mx-auto mb-3" style={{ color: 'var(--muted-foreground)' }} />
                 <p className="text-sm font-semibold text-foreground">No contracts yet</p>
@@ -426,22 +444,25 @@ export default function GroupDashboard({ group, onBack }: GroupDashboardProps) {
               groupContracts.map((contract) => (
                 <div
                   key={contract.id}
-                  className="rounded-xl p-4 transition-all active:scale-98"
+                  onClick={() => router.push(`/contract-detail-screen?id=${contract.id}`)}
+                  className="rounded-xl p-4 transition-all active:scale-98 cursor-pointer"
                   style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
                 >
                   <div className="flex items-start justify-between mb-2">
                     <p className="text-sm font-semibold text-foreground flex-1 pr-2 leading-snug">
-                      {contract.title}
+                      {contract.icon} {contract.title}
                     </p>
-                    <StatusBadge status={contract.status} />
+                    <StatusBadge status={contract.status as 'open' | 'locked' | 'resolved'} />
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                      {contract.participantCount} entries
+                      {contract.participant_count} entries
                     </span>
-                    <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                      {contract.stakeNote}
-                    </span>
+                    {contract.stake_note && (
+                      <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                        {contract.stake_note}
+                      </span>
+                    )}
                   </div>
                 </div>
               ))

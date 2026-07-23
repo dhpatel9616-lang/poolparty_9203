@@ -469,7 +469,7 @@ export default function DiscoverPoolsPage() {
         {/* Main content (hidden when searching) */}
         {!searchQuery &&
         <>
-            <CategoryBrowser onSelect={setSelectedCategory} selectedCategory={selectedCategory} />
+            <CategoryBrowser onSelectCategory={setSelectedCategory} selectedCategory={selectedCategory} />
 
             {/* AI Recommended Section */}
             <div className="px-4 mb-6">
@@ -521,7 +521,7 @@ export default function DiscoverPoolsPage() {
       <PoolCloneFlow
         template={cloneTarget}
         onClose={() => setCloneTarget(null)}
-        onSuccess={() => {setCloneTarget(null);toast.success('Pool created!');router.push('/create-screen');}} />
+        onLaunched={() => {setCloneTarget(null);toast.success('Pool created!');router.push('/create-screen');}} />
 
       }
       {seeAllTarget &&

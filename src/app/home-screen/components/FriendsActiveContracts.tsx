@@ -184,7 +184,7 @@ export default function FriendsActiveContracts() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-                  <StatusBadge status={c.status} />
+                  <StatusBadge status={c.status as 'open' | 'locked' | 'resolved'} />
                   <ChevronRight size={14} style={{ color: 'var(--muted-foreground)' }} />
                 </div>
               </div>

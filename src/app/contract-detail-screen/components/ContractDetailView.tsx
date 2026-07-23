@@ -1,13 +1,13 @@
 'use client';
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { MOCK_CONTRACTS, MOCK_USERS } from '@/lib/mockData';
+import { MOCK_CONTRACTS } from '@/lib/mockData';
 import StatusBadge from '@/components/ui/StatusBadge';
 import ReturnBadge from '@/components/ui/ReturnBadge';
 import AvatarStack from '@/components/ui/AvatarStack';
 import EntryModal from './EntryModal';
 import { ArrowLeft, Lock, CheckCircle, Users, Calendar, Info, ExternalLink, Settings, X, Trash2, Trophy, Share2, Star } from 'lucide-react';
-import { resolveContractWithPaymentNotifications } from '@/lib/supabase/services';
+import { resolveContractWithPaymentNotifications, fetchContractParticipants, type ContractParticipant } from '@/lib/supabase/services';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { useContractRealtime } from '@/lib/supabase/realtime';
@@ -295,7 +295,7 @@ function timeAgo(ts: string) {
 }
 
 // Admin bottom sheet
-function AdminSheet({ contract, onClose, onResolved }: { contract: Contract; onClose: () => void; onResolved?: (outcomeId: string) => void }) {
+function AdminSheet({ contract, participants, onClose, onResolved }: { contract: Contract; participants: ContractParticipant[]; onClose: () => void; onResolved?: (outcomeId: string) => void }) {
   const { user } = useAuth();
   const [showLockConfirm, setShowLockConfirm] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
@@ -309,21 +309,34 @@ function AdminSheet({ contract, onClose, onResolved }: { contract: Contract; onC
     if (!selectedWinnerOutcome || !user?.id) return;
     setResolving(true);
     try {
-      // Determine losers from participants (mock: all non-winner participants)
-      const loserIds = MOCK_USERS.slice(1, 3).map((u) => u.id);
-      const loserNames: Record<string, string> = {};
-      MOCK_USERS.slice(1, 3).forEach((u) => { loserNames[u.id] = u.name; });
+      // Real winners/losers, derived from actual pool_entries — not mock data.
+      const winners = participants.filter((p) => p.outcomeId === selectedWinnerOutcome);
+      const losers = participants.filter((p) => p.outcomeId !== selectedWinnerOutcome);
 
-      await resolveContractWithPaymentNotifications({
-        poolId: contract.id,
-        poolTitle: contract.title,
-        winnerId: user.id,
-        winnerName: MOCK_USERS[0].name,
-        loserIds,
-        loserNames,
-        amountNote: contract.stakeNote || 'Contract settlement',
-        returnAmount: 25,
-      });
+      if (winners.length === 0) {
+        toast.error('No one picked that outcome — nothing to settle.');
+        setResolving(false);
+        return;
+      }
+
+      // Simple model: each loser's own stake splits evenly across all winners.
+      // (Not stake-weighted payout — flag if you want proportional-by-stake math instead.)
+      for (const loser of losers) {
+        const perWinnerShare = Math.round((loser.stakeAmount / winners.length) * 100) / 100;
+        for (const winner of winners) {
+          await resolveContractWithPaymentNotifications({
+            poolId: contract.id,
+            poolTitle: contract.title,
+            winnerId: winner.userId,
+            winnerName: winner.fullName,
+            loserIds: [loser.userId],
+            loserNames: { [loser.userId]: loser.fullName },
+            amountNote: contract.stakeNote || 'Contract settlement',
+            returnAmount: perWinnerShare,
+          });
+        }
+      }
+
       onResolved?.(selectedWinnerOutcome);
       onClose();
     } catch {
@@ -355,24 +368,30 @@ function AdminSheet({ contract, onClose, onResolved }: { contract: Contract; onC
           {/* Members */}
           <div>
             <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--muted-foreground)' }}>Members</p>
-            {MOCK_USERS.slice(0, 3).map((u) => (
-              <div key={u.id} className="flex items-center justify-between py-2.5 border-b last:border-b-0" style={{ borderColor: 'var(--border)' }}>
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold" style={{ background: 'var(--elevated)', color: 'var(--foreground)' }}>
-                    {u.avatar}
+            {participants.length === 0 ? (
+              <p className="text-xs py-2" style={{ color: 'var(--muted-foreground)' }}>No entries yet.</p>
+            ) : (
+              participants.map((p) => (
+                <div key={p.userId} className="flex items-center justify-between py-2.5 border-b last:border-b-0" style={{ borderColor: 'var(--border)' }}>
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold" style={{ background: 'var(--elevated)', color: 'var(--foreground)' }}>
+                      {p.fullName.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{p.fullName}</p>
+                      <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                        {p.outcomeLabel ? `Picked ${p.outcomeLabel}` : 'No pick yet'}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm font-medium text-foreground">{u.name}</p>
-                    <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Picked outcome 1</p>
-                  </div>
+                  {p.userId !== user?.id && (
+                    <button className="px-2 py-1 rounded-lg text-xs font-medium" style={{ background: 'rgba(255,77,141,0.1)', color: 'var(--social)' }}>
+                      Remove
+                    </button>
+                  )}
                 </div>
-                {u.id !== 'user-001' && (
-                  <button className="px-2 py-1 rounded-lg text-xs font-medium" style={{ background: 'rgba(255,77,141,0.1)', color: 'var(--social)' }}>
-                    Remove
-                  </button>
-                )}
-              </div>
-            ))}
+              ))
+            )}
           </div>
 
           {/* Pool Controls */}
@@ -509,8 +528,7 @@ function AdminSheet({ contract, onClose, onResolved }: { contract: Contract; onC
 }
 
 // Participants bottom sheet
-function ParticipantsSheet({ contract, onClose }: { contract: Contract; onClose: () => void }) {
-  const participants = MOCK_USERS.slice(0, contract.participantCount || 5);
+function ParticipantsSheet({ contract, participants, onClose }: { contract: Contract; participants: ContractParticipant[]; onClose: () => void }) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center"
@@ -519,7 +537,7 @@ function ParticipantsSheet({ contract, onClose }: { contract: Contract; onClose:
     >
       <div
         className="w-full max-w-[390px] rounded-t-3xl flex flex-col"
-        style={{ background: 'var(--surface)', maxHeight: '75dvh' }}
+        style={{ background: 'var(--surface)', maxHeight: '75dvh', paddingBottom: 'env(safe-area-inset-bottom)' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="w-10 h-1 rounded-full mx-auto mt-3 mb-1 flex-shrink-0" style={{ background: 'var(--border)' }} />
@@ -530,25 +548,38 @@ function ParticipantsSheet({ contract, onClose }: { contract: Contract; onClose:
           </button>
         </div>
         <div className="overflow-y-auto flex-1 px-4 py-3 space-y-2 pb-8">
-          {participants.map((u, i) => (
-            <div key={u.id} className="rounded-xl p-3 flex items-center gap-3" style={{ background: 'var(--elevated)', border: '1px solid var(--border)' }}>
-              <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0" style={{ background: 'var(--surface)', color: 'var(--foreground)' }}>
-                {u.avatar}
+          {participants.length === 0 ? (
+            <p className="text-sm text-center py-6" style={{ color: 'var(--muted-foreground)' }}>
+              No entries yet.
+            </p>
+          ) : (
+            participants.map((p) => (
+              <div key={p.userId} className="rounded-xl p-3 flex items-center gap-3" style={{ background: 'var(--elevated)', border: '1px solid var(--border)' }}>
+                <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 overflow-hidden" style={{ background: 'var(--surface)', color: 'var(--foreground)' }}>
+                  {p.avatarUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={p.avatarUrl} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    p.fullName.charAt(0).toUpperCase()
+                  )}
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-foreground">{p.fullName}</p>
+                  <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                    {p.username ? `@${p.username}` : p.outcomeLabel ? `Picked ${p.outcomeLabel}` : ''}
+                  </p>
+                </div>
+                <div className="flex flex-col items-end gap-1">
+                  <span className="text-xs font-bold" style={{ color: 'var(--primary)' }}>
+                    Trust: {p.trustScore}
+                  </span>
+                  <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                    ${p.stakeAmount} staked
+                  </span>
+                </div>
               </div>
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-foreground">{u.name}</p>
-                <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{u.handle}</p>
-              </div>
-              <div className="flex flex-col items-end gap-1">
-                <span className="text-xs font-bold" style={{ color: 'var(--primary)' }}>
-                  Trust: {u.trustScore}
-                </span>
-                <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                  ${(i + 1) * 25} staked
-                </span>
-              </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
     </div>
@@ -670,8 +701,19 @@ export default function ContractDetailView() {
   const [chatInput, setChatInput] = useState('');
   const [showAdmin, setShowAdmin] = useState(false);
   const [showParticipants, setShowParticipants] = useState(false);
+  const [participants, setParticipants] = useState<ContractParticipant[]>([]);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const isCreator = !!user?.id && contract.creatorId === user.id;
+
+  // Real participants (pool_entries), not mock data
+  useEffect(() => {
+    if (!contract.id) return;
+    let cancelled = false;
+    fetchContractParticipants(contract.id)
+      .then((data) => { if (!cancelled) setParticipants(data); })
+      .catch((err) => console.error('Failed to load participants', err));
+    return () => { cancelled = true; };
+  }, [contract.id]);
 
   // Real-time contract subscription
   const { contract: liveContract } = useContractRealtime(contract.id);
@@ -732,7 +774,9 @@ export default function ContractDetailView() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const participantAvatars = MOCK_USERS.slice(0, 5).map((u) => u.avatar);
+  const participantAvatars = participants
+    .slice(0, 5)
+    .map((p) => p.fullName.charAt(0).toUpperCase());
 
   const handleOutcomeSelect = (outcomeId: string) => {
     if (contract.status !== 'open') return;
@@ -1162,7 +1206,7 @@ export default function ContractDetailView() {
       </div>
 
       {showParticipants && (
-        <ParticipantsSheet contract={contract} onClose={() => setShowParticipants(false)} />
+        <ParticipantsSheet contract={contract} participants={participants} onClose={() => setShowParticipants(false)} />
       )}
 
       {showEntry && selectedOutcome && (
@@ -1176,6 +1220,7 @@ export default function ContractDetailView() {
       {showAdmin && (
         <AdminSheet
           contract={contract}
+          participants={participants}
           onClose={() => setShowAdmin(false)}
           onResolved={handleAdminResolved}
         />

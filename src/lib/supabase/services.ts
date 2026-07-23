@@ -166,8 +166,12 @@ export async function followCreator(followerId: string, creatorId: string) {
     .from('creator_follows')
     .insert({ follower_id: followerId, creator_id: creatorId });
   if (error) throw error;
-  // Increment follower_count
-  await supabase.rpc('increment_creator_followers', { creator_id: creatorId }).catch(() => {});
+  // Increment follower_count (best-effort; don't fail the follow action if this errors)
+  try {
+    await supabase.rpc('increment_creator_followers', { creator_id: creatorId });
+  } catch {
+    // non-fatal
+  }
 }
 
 export async function unfollowCreator(followerId: string, creatorId: string) {
@@ -318,6 +322,137 @@ export async function fetchActivities(limit = 50) {
 }
 
 // ─── Settlement / Payments ────────────────────────────────────────────────────
+
+// ─── Contract Participants (real pool_entries, not mock data) ─────────────────
+
+export interface ContractParticipant {
+  userId: string;
+  fullName: string;
+  username: string | null;
+  avatarUrl: string | null;
+  trustScore: number;
+  stakeAmount: number;
+  outcomeId: string | null;
+  outcomeLabel: string | null;
+}
+
+export async function fetchContractParticipants(poolId: string): Promise<ContractParticipant[]> {
+  const supabase = createClient();
+
+  const { data: entries, error } = await supabase
+    .from('pool_entries')
+    .select(`
+      user_id,
+      stake_amount,
+      outcome_id,
+      user:user_id ( full_name, username, avatar_url ),
+      outcome:outcome_id ( label )
+    `)
+    .eq('pool_id', poolId);
+
+  if (error) throw error;
+  if (!entries || entries.length === 0) return [];
+
+  const userIds = entries.map((e: any) => e.user_id);
+  const { data: scores } = await supabase
+    .from('accountability_scores')
+    .select('user_id, accountability_score')
+    .in('user_id', userIds);
+
+  const scoreMap = new Map(
+    (scores ?? []).map((s: any) => [s.user_id, Math.round(Number(s.accountability_score) * 10)])
+  );
+
+  return entries.map((e: any) => {
+    const user = Array.isArray(e.user) ? e.user[0] : e.user;
+    const outcome = Array.isArray(e.outcome) ? e.outcome[0] : e.outcome;
+    return {
+      userId: e.user_id,
+      fullName: user?.full_name || 'Player',
+      username: user?.username ?? null,
+      avatarUrl: user?.avatar_url ?? null,
+      trustScore: scoreMap.get(e.user_id) ?? 500,
+      stakeAmount: Number(e.stake_amount) || 0,
+      outcomeId: e.outcome_id,
+      outcomeLabel: outcome?.label ?? null,
+    };
+  });
+}
+
+// ─── Group / All Contracts lists (real pools, not mock data) ──────────────────
+
+export interface GroupContractSummary {
+  id: string;
+  title: string;
+  status: string;
+  icon: string;
+  participant_count: number;
+  entry_deadline: string | null;
+  stake_note: string | null;
+  created_at: string;
+}
+
+// Contracts belonging to one group — used by the group dashboard's contract list.
+// Matches pools whose primary group_id is this group, OR whose group_ids array
+// (multi-group sharing) includes this group.
+export async function fetchGroupContracts(groupId: string): Promise<GroupContractSummary[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('pools')
+    .select('id, title, status, icon, participant_count, entry_deadline, stake_note, created_at')
+    .or(`group_id.eq.${groupId},group_ids.cs.{${groupId}}`)
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return data ?? [];
+}
+
+export interface UserContractSummary {
+  id: string;
+  title: string;
+  status: string;
+  participant_count: number;
+  stake_note: string | null;
+  group_id: string | null;
+  group_name: string;
+  group_emoji: string;
+}
+
+// All contracts across every group the given user is a member of —
+// used by the /contracts "All Contracts" list.
+export async function fetchUserContracts(userId: string): Promise<UserContractSummary[]> {
+  const supabase = createClient();
+
+  const { data: memberships, error: memErr } = await supabase
+    .from('group_members')
+    .select('group_id')
+    .eq('user_id', userId);
+  if (memErr) throw memErr;
+
+  const groupIds = (memberships ?? []).map((m: any) => m.group_id);
+  if (groupIds.length === 0) return [];
+
+  const { data: pools, error: poolsErr } = await supabase
+    .from('pools')
+    .select('id, title, status, participant_count, stake_note, group_id, group:group_id ( name, emoji )')
+    .in('group_id', groupIds)
+    .order('created_at', { ascending: false });
+  if (poolsErr) throw poolsErr;
+
+  return (pools ?? []).map((p: any) => {
+    const group = Array.isArray(p.group) ? p.group[0] : p.group;
+    return {
+      id: p.id,
+      title: p.title,
+      status: p.status,
+      participant_count: p.participant_count,
+      stake_note: p.stake_note,
+      group_id: p.group_id,
+      group_name: group?.name ?? 'Group',
+      group_emoji: group?.emoji ?? '🏆',
+    };
+  });
+}
 
 export async function fetchSettlementItems(userId: string) {
   const supabase = createClient();

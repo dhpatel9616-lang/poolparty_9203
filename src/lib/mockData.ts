@@ -14,6 +14,9 @@ export interface User {
   wins: number;
   losses: number;
   pending: number;
+  activeContracts?: number;
+  disputes?: number;
+  unpaidCount?: number;
   joinDate: string;
   badges: string[];
 }
