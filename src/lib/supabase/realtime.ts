@@ -5,22 +5,16 @@ import { createClient } from '@/lib/supabase/client';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export interface SettlementItem {
+export interface SettlementRecord {
   id: string;
-  pool_id: string;
-  payer_id: string | null;
-  receiver_id: string | null;
-  amount_note: string;
-  return_amount: number;
-  status: 'unpaid' | 'paid' | 'confirmed' | 'disputed' | 'waived';
+  pool_id: string | null;
+  payer_id: string;
+  recipient_id: string;
+  amount: number;
+  settlement_status: 'pending' | 'claimed_paid' | 'confirmed_received' | 'disputed' | 'overdue' | 'cancelled';
+  due_date: string | null;
   created_at: string;
   updated_at?: string;
-  // Populated at resolution time by resolveContractWithPaymentNotifications —
-  // real columns on settlement_items, just missing from this type previously.
-  pool_title?: string;
-  payer_name?: string;
-  receiver_name?: string;
-  winner_payment_methods?: { id: string; type: string; handle: string }[];
 }
 
 export interface ActivityRecord {
@@ -43,17 +37,20 @@ export interface NotificationRecord {
   created_at: string;
 }
 
-// ─── Settlement Items Realtime Hook ──────────────────────────────────────────
+// ─── Settlements Realtime Hook ───────────────────────────────────────────────
+// Reads the real `settlements` table (with reputation triggers, disputes,
+// confirmations) — the system /settlement uses. The earlier `settlement_items`
+// table is retired and no longer written to.
 
-export function useSettlementItemsRealtime(poolId?: string) {
-  const [items, setItems] = useState<SettlementItem[]>([]);
+export function useSettlementsRealtime(poolId?: string) {
+  const [items, setItems] = useState<SettlementRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchItems = useCallback(async () => {
     const supabase = createClient();
     let query = supabase
-      .from('settlement_items')
+      .from('settlements')
       .select('*')
       .order('created_at', { ascending: false });
 
@@ -74,7 +71,7 @@ export function useSettlementItemsRealtime(poolId?: string) {
     fetchItems();
 
     const supabase = createClient();
-    const channelName = poolId ? `settlement_items_${poolId}` : 'settlement_items_all';
+    const channelName = poolId ? `settlements_${poolId}` : 'settlements_all';
     const filter = poolId ? `pool_id=eq.${poolId}` : undefined;
 
     const channel = supabase
@@ -84,23 +81,23 @@ export function useSettlementItemsRealtime(poolId?: string) {
         {
           event: '*',
           schema: 'public',
-          table: 'settlement_items',
+          table: 'settlements',
           ...(filter ? { filter } : {}),
         },
         (payload) => {
           if (payload.eventType === 'INSERT') {
-            setItems((prev) => [payload.new as SettlementItem, ...prev]);
+            setItems((prev) => [payload.new as SettlementRecord, ...prev]);
           } else if (payload.eventType === 'UPDATE') {
             setItems((prev) =>
               prev.map((item) =>
-                item.id === (payload.new as SettlementItem).id
-                  ? (payload.new as SettlementItem)
+                item.id === (payload.new as SettlementRecord).id
+                  ? (payload.new as SettlementRecord)
                   : item
               )
             );
           } else if (payload.eventType === 'DELETE') {
             setItems((prev) =>
-              prev.filter((item) => item.id !== (payload.old as SettlementItem).id)
+              prev.filter((item) => item.id !== (payload.old as SettlementRecord).id)
             );
           }
         }

@@ -16,10 +16,10 @@ export default function SmartSuggestion() {
 
     const fetchSuggestion = async () => {
       // Check for unpaid settlements
-      const { data: unpaid } = await supabase?.from('settlement_items')?.select('amount_note, return_amount')?.or(`payer_id.eq.${user?.id},receiver_id.eq.${user?.id}`)?.eq('status', 'unpaid')?.limit(1);
+      const { data: unpaid } = await supabase?.from('settlements')?.select('amount')?.or(`payer_id.eq.${user?.id},recipient_id.eq.${user?.id}`)?.eq('settlement_status', 'pending')?.limit(1);
 
       if (unpaid && unpaid?.length > 0) {
-        setSuggestion(`You have a pending payment of $${unpaid?.[0]?.return_amount}. Settle up to keep your trust score high!`);
+        setSuggestion(`You have a pending payment of $${unpaid?.[0]?.amount}. Settle up to keep your trust score high!`);
         return;
       }
 

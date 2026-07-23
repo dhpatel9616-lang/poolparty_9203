@@ -454,23 +454,38 @@ export async function fetchUserContracts(userId: string): Promise<UserContractSu
   });
 }
 
-export async function fetchSettlementItems(userId: string) {
+export interface SettlementRecord {
+  id: string;
+  pool_id: string | null;
+  payer_id: string;
+  recipient_id: string;
+  amount: number;
+  settlement_status: 'pending' | 'claimed_paid' | 'confirmed_received' | 'disputed' | 'overdue' | 'cancelled';
+  due_date: string | null;
+  created_at: string;
+  updated_at?: string;
+}
+
+// Fetches from the real `settlements` table (with reputation triggers,
+// disputes, confirmations) — this is the system /settlement reads.
+// `settlement_items` is the retired, earlier table and is no longer written to.
+export async function fetchSettlements(userId: string): Promise<SettlementRecord[]> {
   const supabase = createClient();
   const { data, error } = await supabase
-    .from('settlement_items')
+    .from('settlements')
     .select('*')
-    .or(`payer_id.eq.${userId},receiver_id.eq.${userId}`)
+    .or(`payer_id.eq.${userId},recipient_id.eq.${userId}`)
     .order('created_at', { ascending: false });
   if (error) return [];
   return data ?? [];
 }
 
-export async function updateSettlementStatus(itemId: string, status: string) {
+export async function updateSettlementStatus(settlementId: string, status: string) {
   const supabase = createClient();
   const { error } = await supabase
-    .from('settlement_items')
-    .update({ status, updated_at: new Date().toISOString() })
-    .eq('id', itemId);
+    .from('settlements')
+    .update({ settlement_status: status, updated_at: new Date().toISOString() })
+    .eq('id', settlementId);
   if (error) throw error;
 }
 
@@ -478,8 +493,9 @@ export async function updateSettlementStatus(itemId: string, status: string) {
 
 export interface PaymentMethod {
   id: string;
-  type: string;
-  handle: string;
+  method_type: string;
+  username: string | null;
+  payment_url: string | null;
 }
 
 export async function resolveContractWithPaymentNotifications(params: {
@@ -494,34 +510,37 @@ export async function resolveContractWithPaymentNotifications(params: {
 }) {
   const supabase = createClient();
 
-  // Fetch winner's payment methods
-  const { data: winnerProfile } = await supabase
-    .from('user_profiles')
-    .select('payment_methods, full_name')
-    .eq('id', params.winnerId)
-    .single();
+  // Fetch winner's real payment methods (the payment_methods table — what
+  // PaymentMethodsManager and /settlement actually read/write — not the
+  // unused user_profiles.payment_methods JSONB column).
+  const { data: methodsData } = await supabase
+    .from('payment_methods')
+    .select('id, method_type, username, payment_url')
+    .eq('user_id', params.winnerId)
+    .eq('is_active', true)
+    .order('priority', { ascending: true });
 
-  const winnerPaymentMethods: PaymentMethod[] = winnerProfile?.payment_methods ?? [];
+  const winnerPaymentMethods: PaymentMethod[] = methodsData ?? [];
 
   // Build notification body with payment methods
   const paymentMethodsText = winnerPaymentMethods.length > 0
-    ? winnerPaymentMethods.map((m) => `${m.type}: ${m.handle}`).join(' · ')
+    ? winnerPaymentMethods.map((m) => `${m.method_type}${m.username ? `: ${m.username}` : ''}`).join(' · ')
     : 'Contact winner directly for payment details';
 
   const notificationBody = `Pay ${params.winnerName} via: ${paymentMethodsText}`;
 
-  // Create settlement items and notifications for each loser
+  // Each loser owes the winner via a real `settlements` row — this is what
+  // /settlement reads, and what drives the reputation triggers on status change.
+  const dueDate = new Date();
+  dueDate.setDate(dueDate.getDate() + 7);
+
   const settlementInserts = params.loserIds.map((loserId) => ({
     pool_id: params.poolId,
-    pool_title: params.poolTitle,
     payer_id: loserId,
-    payer_name: params.loserNames[loserId] ?? '',
-    receiver_id: params.winnerId,
-    receiver_name: params.winnerName,
-    amount_note: params.amountNote,
-    return_amount: params.returnAmount,
-    status: 'unpaid',
-    winner_payment_methods: winnerPaymentMethods,
+    recipient_id: params.winnerId,
+    amount: params.returnAmount,
+    settlement_status: 'pending',
+    due_date: dueDate.toISOString(),
   }));
 
   const notificationInserts = params.loserIds.map((loserId) => ({
@@ -540,9 +559,10 @@ export async function resolveContractWithPaymentNotifications(params: {
     },
   }));
 
-  // Insert settlement items
+  // Insert settlements
   if (settlementInserts.length > 0) {
-    await supabase.from('settlement_items').insert(settlementInserts);
+    const { error: settlementError } = await supabase.from('settlements').insert(settlementInserts);
+    if (settlementError) throw settlementError;
   }
 
   // Insert notifications for losers
@@ -555,7 +575,7 @@ export async function resolveContractWithPaymentNotifications(params: {
     user_id: params.winnerId,
     type: 'contract_resolved',
     title: `You won — ${params.poolTitle}! 🏆`,
-    body: `${params.loserIds.length} player${params.loserIds.length !== 1 ? 's' : ''} owe you. Track payments in the Payments tab.`,
+    body: `${params.loserIds.length} player${params.loserIds.length !== 1 ? 's' : ''} owe you. Track it on the Settlement tab.`,
     metadata: {
       pool_id: params.poolId,
       pool_title: params.poolTitle,

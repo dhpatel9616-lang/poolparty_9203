@@ -92,10 +92,10 @@ export default function StatsGrid({ user }: StatsGridProps) {
           .or(`opened_by.eq.${user.id},against_user_id.eq.${user.id}`)
           .order('created_at', { ascending: false }),
         supabase
-          .from('settlement_items')
-          .select('id, return_amount, status, pool:pool_id(title), receiver:receiver_id(full_name)')
+          .from('settlements')
+          .select('id, amount, settlement_status, pool:pool_id(title), recipient:recipient_id(full_name)')
           .eq('payer_id', user.id)
-          .eq('status', 'unpaid'),
+          .eq('settlement_status', 'pending'),
       ]);
 
       if (entriesRes.data) {
@@ -136,13 +136,13 @@ export default function StatsGrid({ user }: StatsGridProps) {
         setUnpaid(
           unpaidRes.data.map((p: any) => {
             const pool = Array.isArray(p.pool) ? p.pool[0] : p.pool;
-            const receiver = Array.isArray(p.receiver) ? p.receiver[0] : p.receiver;
+            const recipient = Array.isArray(p.recipient) ? p.recipient[0] : p.recipient;
             return {
               id: p.id,
-              toUserName: receiver?.full_name || 'Unknown',
+              toUserName: recipient?.full_name || 'Unknown',
               poolTitle: pool?.title || 'Contract',
-              amount: p.return_amount,
-              status: p.status,
+              amount: p.amount,
+              status: p.settlement_status,
             };
           })
         );

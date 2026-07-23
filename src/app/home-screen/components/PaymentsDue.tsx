@@ -4,15 +4,15 @@ import { Bell, Check, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { sendNudge } from '@/lib/supabase/services';
-import { useSettlementItemsRealtime } from '@/lib/supabase/realtime';
+import { useSettlementsRealtime } from '@/lib/supabase/realtime';
 
 export default function PaymentsDue() {
   const { user } = useAuth();
-  const { items: realtimeItems, loading } = useSettlementItemsRealtime();
+  const { items: realtimeItems, loading } = useSettlementsRealtime();
   const [nudgedIds, setNudgedIds] = useState<Set<string>>(new Set());
 
   const unpaid = realtimeItems.filter(
-    (p) => p.status === 'unpaid' || p.status === 'paid'
+    (p) => p.settlement_status === 'pending' || p.settlement_status === 'claimed_paid' || p.settlement_status === 'overdue'
   );
 
   const handleNudge = async (itemId: string, receiverId: string | null) => {
@@ -61,9 +61,9 @@ export default function PaymentsDue() {
 
         <div className="divide-y" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
           {unpaid.map((payment) => {
-            const isOwedToMe = payment.receiver_id === user?.id;
+            const isOwedToMe = payment.recipient_id === user?.id;
             const isNudged = nudgedIds.has(payment.id);
-            const otherPartyId = isOwedToMe ? payment.payer_id : payment.receiver_id;
+            const otherPartyId = isOwedToMe ? payment.payer_id : payment.recipient_id;
 
             return (
               <div key={payment.id} className="px-4 py-3">
@@ -83,9 +83,11 @@ export default function PaymentsDue() {
                         <p className="text-sm font-semibold text-foreground">
                           {isOwedToMe ? 'Awaiting payment' : 'You owe'}
                         </p>
-                        <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                          {payment.amount_note}
-                        </p>
+                        {payment.due_date && (
+                          <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                            Due {new Date(payment.due_date).toLocaleDateString()}
+                          </p>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -95,10 +97,10 @@ export default function PaymentsDue() {
                       className="text-sm font-bold"
                       style={{ color: isOwedToMe ? 'var(--success)' : 'var(--social)', fontVariantNumeric: 'tabular-nums' }}
                     >
-                      {isOwedToMe ? '+' : '-'}${payment.return_amount}
+                      {isOwedToMe ? '+' : '-'}${payment.amount}
                     </span>
 
-                    {payment.status === 'paid' ? (
+                    {payment.settlement_status === 'claimed_paid' ? (
                       <span
                         className="pill-badge text-xs"
                         style={{ background: 'rgba(0,230,118,0.12)', color: 'var(--success)' }}

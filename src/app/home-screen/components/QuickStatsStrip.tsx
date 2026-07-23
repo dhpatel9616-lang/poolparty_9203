@@ -28,19 +28,19 @@ export default function QuickStatsStrip({ activeFilter, onFilterChange }: QuickS
     const fetchStats = async () => {
       const [poolsRes, settlementsRes, disputesRes] = await Promise.all([
         supabase.from('pools').select('id', { count: 'exact', head: true }).eq('status', 'open'),
-        supabase.from('settlement_items').select('*').or(`payer_id.eq.${user.id},receiver_id.eq.${user.id}`).eq('status', 'unpaid'),
+        supabase.from('settlements').select('*').or(`payer_id.eq.${user.id},recipient_id.eq.${user.id}`).in('settlement_status', ['pending', 'claimed_paid', 'overdue']),
         supabase.from('disputes').select('id', { count: 'exact', head: true }).or(`opened_by.eq.${user.id},against_user_id.eq.${user.id}`).eq('dispute_status', 'open'),
       ]);
 
       const settlements = settlementsRes.data ?? [];
-      const owedToMe = settlements.filter((s: any) => s.receiver_id === user.id);
+      const owedToMe = settlements.filter((s: any) => s.recipient_id === user.id);
       const youOwe = settlements.filter((s: any) => s.payer_id === user.id);
-      const owedTotal = owedToMe.reduce((sum: number, s: any) => sum + Number(s.return_amount), 0);
+      const owedTotal = owedToMe.reduce((sum: number, s: any) => sum + Number(s.amount), 0);
 
       setStats({
         active: poolsRes.count ?? 0,
         owed: owedTotal,
-        youOwe: youOwe.reduce((sum: number, s: any) => sum + Number(s.return_amount), 0),
+        youOwe: youOwe.reduce((sum: number, s: any) => sum + Number(s.amount), 0),
         disputes: disputesRes.count ?? 0,
       });
     };

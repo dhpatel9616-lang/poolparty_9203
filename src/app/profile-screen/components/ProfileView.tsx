@@ -8,7 +8,7 @@ import { Settings, Share2, Network, Trophy, Shield, Gavel, Star, BarChart2, Wall
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
-import { fetchCurrentUserProfile, fetchAccountabilityScore, fetchUserBadges, fetchReliabilityHistory, fetchSettlementItems } from '@/lib/supabase/services';
+import { fetchCurrentUserProfile, fetchAccountabilityScore, fetchUserBadges, fetchReliabilityHistory, fetchSettlements } from '@/lib/supabase/services';
 import { useUserTrustScoreRealtime } from '@/lib/supabase/realtime';
 import PaymentMethodsManager from './PaymentMethodsManager';
 import SettlementBadges, { SettlementBadgeMetrics } from '@/components/ui/SettlementBadges';
@@ -46,14 +46,14 @@ export default function ProfileView() {
       fetchUserBadges(user.id),
       fetchReliabilityHistory(user.id),
       supabase.from('user_reputation').select('*').eq('user_id', user.id).maybeSingle(),
-      fetchSettlementItems(user.id),
+      fetchSettlements(user.id),
     ]).then(([p, s, b, h, repRes, settlements]) => {
       setProfile(p);
       setScore(s);
       setBadges(b);
       setHistory(h);
       setReputation((repRes as any).data ?? null);
-      setUnpaidCount((settlements as any[]).filter((i) => i.payer_id === user.id && i.status === 'unpaid').length);
+      setUnpaidCount((settlements as any[]).filter((i) => i.payer_id === user.id && i.settlement_status === 'pending').length);
       setLoading(false);
     });
   }, [user]);

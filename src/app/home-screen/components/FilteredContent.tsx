@@ -7,7 +7,7 @@ import type { HomeFilter } from './QuickStatsStrip';
 import { useAuth } from '@/contexts/AuthContext';
 import { createClient } from '@/lib/supabase/client';
 import { fetchUserDisputes, updateSettlementStatus } from '@/lib/supabase/services';
-import { useSettlementItemsRealtime } from '@/lib/supabase/realtime';
+import { useSettlementsRealtime } from '@/lib/supabase/realtime';
 import BottomSheet from '@/components/ui/BottomSheet';
 
 interface FilteredContentProps {
@@ -18,17 +18,17 @@ interface FilteredContentProps {
 // ---- Owed to You panel ----
 function OwedToYouPanel() {
   const { user } = useAuth();
-  const { items } = useSettlementItemsRealtime();
+  const { items } = useSettlementsRealtime();
   const [confirmedIds, setConfirmedIds] = useState<Set<string>>(new Set());
 
   const myItems = items.filter(
-    (p) => p.receiver_id === user?.id && (p.status === 'unpaid' || p.status === 'paid')
+    (p) => p.recipient_id === user?.id && (p.settlement_status === 'pending' || p.settlement_status === 'claimed_paid')
   );
 
   const handleConfirm = async (id: string) => {
     setConfirmedIds((prev) => new Set([...prev, id]));
     try {
-      await updateSettlementStatus(id, 'confirmed');
+      await updateSettlementStatus(id, 'confirmed_received');
     } catch {}
   };
 
@@ -67,24 +67,28 @@ function OwedToYouPanel() {
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-foreground">Payer</p>
-                  <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{p.amount_note}</p>
+                  {p.due_date && (
+                    <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                      Due {new Date(p.due_date).toLocaleDateString()}
+                    </p>
+                  )}
                 </div>
               </div>
               <span className="text-sm font-bold" style={{ color: 'var(--success)', fontVariantNumeric: 'tabular-nums' }}>
-                +${p.return_amount}
+                +${p.amount}
               </span>
             </div>
             <div className="flex items-center justify-between">
               <span
                 className="pill-badge text-xs"
                 style={{
-                  background: p.status === 'paid' ? 'rgba(0,230,118,0.12)' : 'rgba(255,77,141,0.12)',
-                  color: p.status === 'paid' ? 'var(--success)' : 'var(--social)',
+                  background: p.settlement_status === 'claimed_paid' ? 'rgba(0,230,118,0.12)' : 'rgba(255,77,141,0.12)',
+                  color: p.settlement_status === 'claimed_paid' ? 'var(--success)' : 'var(--social)',
                 }}
               >
-                {p.status === 'paid' ? 'Awaiting confirm' : 'Unpaid'}
+                {p.settlement_status === 'claimed_paid' ? 'Awaiting confirm' : 'Unpaid'}
               </span>
-              {p.status === 'paid' && !isConfirmed && (
+              {p.settlement_status === 'claimed_paid' && !isConfirmed && (
                 <button
                   onClick={() => handleConfirm(p.id)}
                   className="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold transition-all active:scale-95"
@@ -108,13 +112,13 @@ function OwedToYouPanel() {
 // ---- You Owe panel ----
 function YouOwePanel() {
   const { user } = useAuth();
-  const { items } = useSettlementItemsRealtime();
+  const { items } = useSettlementsRealtime();
   const [paidIds, setPaidIds] = useState<Set<string>>(new Set());
   const [showModal, setShowModal] = useState<string | null>(null);
   const [methodNote, setMethodNote] = useState('');
 
   const myItems = items.filter(
-    (p) => p.payer_id === user?.id && p.status === 'unpaid'
+    (p) => p.payer_id === user?.id && p.settlement_status === 'pending'
   );
 
   const handleMarkPaid = async (id: string) => {
@@ -122,7 +126,7 @@ function YouOwePanel() {
     setShowModal(null);
     setMethodNote('');
     try {
-      await updateSettlementStatus(id, 'paid');
+      await updateSettlementStatus(id, 'claimed_paid');
     } catch {}
   };
 
@@ -164,11 +168,15 @@ function YouOwePanel() {
                   </div>
                   <div>
                     <p className="text-sm font-semibold text-foreground">Receiver</p>
-                    <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{p.amount_note}</p>
+                    {p.due_date && (
+                      <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                        Due {new Date(p.due_date).toLocaleDateString()}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <span className="text-sm font-bold" style={{ color: 'var(--social)', fontVariantNumeric: 'tabular-nums' }}>
-                  -${p.return_amount}
+                  -${p.amount}
                 </span>
               </div>
               <div className="flex items-center justify-between">
@@ -177,13 +185,7 @@ function YouOwePanel() {
                     className="pill-badge text-xs cursor-default select-none"
                     style={{ background: 'var(--elevated)', color: 'var(--muted-foreground)' }}
                   >
-                    💸 Venmo
-                  </span>
-                  <span
-                    className="pill-badge text-xs cursor-default select-none"
-                    style={{ background: 'var(--elevated)', color: 'var(--muted-foreground)' }}
-                  >
-                    💵 Cash App
+                    See Settlement tab for payment details
                   </span>
                 </div>
                 {isPaid ? (
@@ -207,7 +209,7 @@ function YouOwePanel() {
         {currentPayment && (
           <>
             <p className="text-sm mb-4" style={{ color: 'var(--muted-foreground)' }}>
-              Confirm you&apos;ve sent <span className="font-semibold text-foreground">${currentPayment.return_amount}</span> outside of PoolParty.
+              Confirm you&apos;ve sent <span className="font-semibold text-foreground">${currentPayment.amount}</span> outside of PoolParty.
               PoolParty does not process or verify this payment.
             </p>
             <input

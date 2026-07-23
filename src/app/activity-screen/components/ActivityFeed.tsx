@@ -31,7 +31,7 @@ function getRoute(event: any): string {
     return event.pool_id ? `/contract-detail-screen?id=${event.pool_id}` : '/activity-screen';
   }
   if (['payment_marked', 'payment_confirmed', 'nudge_sent'].includes(type)) {
-    return '/payments';
+    return '/settlement';
   }
   if (['dispute_opened', 'dispute_resolved'].includes(type)) {
     return `/dispute-center`;

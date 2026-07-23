@@ -151,9 +151,9 @@ export default function UserStatsPage() {
         .eq('user_id', user.id)
         .order('created_at', { ascending: true }),
       supabase
-        .from('settlement_items')
-        .select('id, status, created_at')
-        .or(`payer_id.eq.${user.id},receiver_id.eq.${user.id}`)
+        .from('settlements')
+        .select('id, settlement_status, created_at')
+        .or(`payer_id.eq.${user.id},recipient_id.eq.${user.id}`)
         .order('created_at', { ascending: true }),
       supabase
         .from('notifications')
@@ -185,7 +185,7 @@ export default function UserStatsPage() {
     // Settlement success
     const settlementsTotal = settlements.length;
     const settlementsSuccess = settlements.filter(
-      (s: any) => s.status === 'confirmed' || s.status === 'paid'
+      (s: any) => s.settlement_status === 'confirmed_received' || s.settlement_status === 'claimed_paid'
     ).length;
     const settlementSuccessRate = pct(settlementsSuccess, Math.max(settlementsTotal, 1));
 
@@ -210,7 +210,7 @@ export default function UserStatsPage() {
 
       const weekSettlements = settlements.filter((s: any) => {
         const d = new Date(s.created_at);
-        return d >= weekStart && d < weekEnd && (s.status === 'confirmed' || s.status === 'paid');
+        return d >= weekStart && d < weekEnd && (s.settlement_status === 'confirmed_received' || s.settlement_status === 'claimed_paid');
       }).length;
 
       weeks.push({
