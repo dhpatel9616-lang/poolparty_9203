@@ -104,7 +104,8 @@ export default async function InvitePage({ params }: InvitePageProps) {
         name,
         emoji,
         description,
-        member_count
+        member_count,
+        require_approval
       )
     `)
     .eq('invite_code', inviteCode)

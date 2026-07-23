@@ -1,9 +1,10 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { createClient } from '@/lib/supabase/client';
+import { requestToJoinGroup } from '@/lib/supabase/services';
 
 interface GroupInfo {
   id: string;
@@ -11,6 +12,7 @@ interface GroupInfo {
   emoji: string;
   description?: string;
   member_count: number;
+  require_approval?: boolean;
 }
 
 interface JoinGroupCardProps {
@@ -24,6 +26,34 @@ export default function JoinGroupCard({ inviteCode, group, inviteStatus }: JoinG
   const { user } = useAuth();
   const [joining, setJoining] = useState(false);
   const [joined, setJoined] = useState(false);
+  const [requestPending, setRequestPending] = useState(false);
+
+  // Check whether this user is already a member, or already has a
+  // pending request, so the button reflects reality instead of always
+  // showing "Join".
+  useEffect(() => {
+    if (!user?.id || !group) return;
+    const supabase = createClient();
+    (async () => {
+      const { data: existingMember } = await supabase
+        .from('group_members')
+        .select('id')
+        .eq('group_id', group.id)
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (existingMember) { setJoined(true); return; }
+
+      if (group.require_approval) {
+        const { data: existingRequest } = await supabase
+          .from('group_join_requests')
+          .select('id, status')
+          .eq('group_id', group.id)
+          .eq('user_id', user.id)
+          .maybeSingle();
+        if (existingRequest?.status === 'pending') setRequestPending(true);
+      }
+    })();
+  }, [user?.id, group?.id, group?.require_approval]);
 
   const handleJoin = async () => {
     if (!user?.id) {
@@ -45,17 +75,27 @@ export default function JoinGroupCard({ inviteCode, group, inviteStatus }: JoinG
         .eq('user_id', user.id)
         .maybeSingle();
 
-      if (!existingMember) {
-        const { error: memberError } = await supabase
-          .from('group_members')
-          .insert({ group_id: group.id, user_id: user.id, role: 'member' });
-        if (memberError) throw memberError;
-
-        await supabase
-          .from('groups')
-          .update({ member_count: (group.member_count ?? 0) + 1 })
-          .eq('id', group.id);
+      if (existingMember) {
+        setJoined(true);
+        setJoining(false);
+        return;
       }
+
+      if (group.require_approval) {
+        await requestToJoinGroup(group.id, user.id);
+        setRequestPending(true);
+        toast.success('Request sent — the group owner will review it.');
+        setJoining(false);
+        return;
+      }
+
+      const { error: memberError } = await supabase
+        .from('group_members')
+        .insert({ group_id: group.id, user_id: user.id, role: 'member' });
+      if (memberError) throw memberError;
+      // groups.member_count is kept accurate by a database trigger —
+      // regular members can't update a group row directly under RLS,
+      // so there's no client-side count update here anymore.
 
       // Mark the invite as accepted (best-effort, not blocking)
       await supabase
@@ -96,6 +136,8 @@ export default function JoinGroupCard({ inviteCode, group, inviteStatus }: JoinG
 
       {joined ? (
         <p className="text-sm font-semibold" style={{ color: 'var(--success)' }}>You&apos;re in! Redirecting...</p>
+      ) : requestPending ? (
+        <p className="text-sm font-semibold" style={{ color: 'var(--warning)' }}>Request sent — waiting on the group owner to approve.</p>
       ) : inviteStatus === 'expired' ? (
         <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>This invite has expired.</p>
       ) : (
@@ -109,7 +151,7 @@ export default function JoinGroupCard({ inviteCode, group, inviteStatus }: JoinG
             opacity: joining ? 0.7 : 1,
           }}
         >
-          {joining ? 'Joining...' : user ? `Join ${group.name}` : 'Sign in to Join'}
+          {joining ? (group.require_approval ? 'Sending request...' : 'Joining...') : user ? (group.require_approval ? `Request to join ${group.name}` : `Join ${group.name}`) : 'Sign in to Join'}
         </button>
       )}
     </div>

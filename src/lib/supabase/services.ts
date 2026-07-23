@@ -395,6 +395,66 @@ export interface GroupContractSummary {
 // Contracts belonging to one group — used by the group dashboard's contract list.
 // Matches pools whose primary group_id is this group, OR whose group_ids array
 // (multi-group sharing) includes this group.
+// ─── Group Join Requests (real approval flow) ──────────────────────────────
+
+export interface JoinRequest {
+  id: string;
+  group_id: string;
+  user_id: string;
+  status: 'pending' | 'approved' | 'rejected';
+  requested_at: string;
+  fullName: string;
+  username: string | null;
+  avatarUrl: string | null;
+}
+
+// Called from the invite-link join flow when the group requires approval.
+export async function requestToJoinGroup(groupId: string, userId: string) {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from('group_join_requests')
+    .insert({ group_id: groupId, user_id: userId, status: 'pending' });
+  if (error) throw error;
+}
+
+// For the group owner's admin view.
+export async function fetchPendingJoinRequests(groupId: string): Promise<JoinRequest[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('group_join_requests')
+    .select('id, group_id, user_id, status, requested_at, user:user_id ( full_name, username, avatar_url )')
+    .eq('group_id', groupId)
+    .eq('status', 'pending')
+    .order('requested_at', { ascending: true });
+
+  if (error) throw error;
+  return (data ?? []).map((r: any) => {
+    const u = Array.isArray(r.user) ? r.user[0] : r.user;
+    return {
+      id: r.id,
+      group_id: r.group_id,
+      user_id: r.user_id,
+      status: r.status,
+      requested_at: r.requested_at,
+      fullName: u?.full_name || 'Someone',
+      username: u?.username ?? null,
+      avatarUrl: u?.avatar_url ?? null,
+    };
+  });
+}
+
+// Approving actually adds the person to the group via a DB trigger
+// (regular group owners can't insert group_members for someone else
+// directly under RLS — the trigger runs as SECURITY DEFINER).
+export async function respondToJoinRequest(requestId: string, approve: boolean) {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from('group_join_requests')
+    .update({ status: approve ? 'approved' : 'rejected', responded_at: new Date().toISOString() })
+    .eq('id', requestId);
+  if (error) throw error;
+}
+
 export async function fetchGroupContracts(groupId: string): Promise<GroupContractSummary[]> {
   const supabase = createClient();
   const { data, error } = await supabase

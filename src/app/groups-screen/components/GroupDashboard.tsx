@@ -1,11 +1,11 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import type { Group } from '@/lib/mockData';
-import { fetchGroupContracts, type GroupContractSummary } from '@/lib/supabase/services';
+import { fetchGroupContracts, fetchPendingJoinRequests, respondToJoinRequest, type GroupContractSummary, type JoinRequest } from '@/lib/supabase/services';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { ArrowLeft, FileText, CreditCard, AlertTriangle, Users, Trophy, ShieldOff, UserPlus, Crown, Shield, User, X, Link as LinkIcon, MessageCircle } from 'lucide-react';
+import { ArrowLeft, FileText, CreditCard, AlertTriangle, Users, Trophy, ShieldOff, UserPlus, Crown, Shield, User, X, CheckCircle, XCircle, Link as LinkIcon, MessageCircle } from 'lucide-react';
 import StatusBadge from '@/components/ui/StatusBadge';
 import TrustBadge from '@/components/ui/TrustBadge';
 import { toast } from 'sonner';
@@ -147,7 +147,34 @@ export default function GroupDashboard({ group, onBack }: GroupDashboardProps) {
   const [groupContracts, setGroupContracts] = useState<GroupContractSummary[]>([]);
   const [contractsLoading, setContractsLoading] = useState(true);
   const [groupCreatorId, setGroupCreatorId] = useState<string | null>(null);
+  const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
+  const [respondingToId, setRespondingToId] = useState<string | null>(null);
   const isOwner = !!user?.id && user.id === groupCreatorId;
+
+  const loadJoinRequests = () => {
+    if (!isOwner) return;
+    fetchPendingJoinRequests(group.id)
+      .then(setJoinRequests)
+      .catch((err) => console.error('Failed to load join requests', err));
+  };
+
+  useEffect(() => {
+    loadJoinRequests();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOwner, group.id]);
+
+  const handleRespondToRequest = async (request: JoinRequest, approve: boolean) => {
+    setRespondingToId(request.id);
+    try {
+      await respondToJoinRequest(request.id, approve);
+      setJoinRequests((prev) => prev.filter((r) => r.id !== request.id));
+      toast.success(approve ? `${request.fullName} added to the group` : `Request declined`);
+    } catch (err) {
+      console.error('Failed to respond to join request', err);
+      toast.error('Failed to respond. Please try again.');
+    }
+    setRespondingToId(null);
+  };
 
   // Real contracts for this group (replaces mock data), plus the group's
   // real creator_id (isOwner previously compared against a hardcoded fake
@@ -346,6 +373,58 @@ export default function GroupDashboard({ group, onBack }: GroupDashboardProps) {
 
         {activeTab === 'members' && (
           <div className="space-y-2">
+            {isOwner && joinRequests.length > 0 && (
+              <div className="mb-4">
+                <p className="text-xs font-semibold mb-2 px-1" style={{ color: 'var(--warning)' }}>
+                  Pending Requests ({joinRequests.length})
+                </p>
+                <div className="space-y-2">
+                  {joinRequests.map((req) => (
+                    <div
+                      key={req.id}
+                      className="rounded-xl p-3 flex items-center gap-3"
+                      style={{ background: 'rgba(255,200,87,0.06)', border: '1px solid rgba(255,200,87,0.25)' }}
+                    >
+                      <div
+                        className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 overflow-hidden"
+                        style={{ background: 'var(--elevated)', color: 'var(--foreground)' }}
+                      >
+                        {req.avatarUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={req.avatarUrl} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          req.fullName.charAt(0).toUpperCase()
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-foreground truncate">{req.fullName}</p>
+                        {req.username && (
+                          <p className="text-xs truncate" style={{ color: 'var(--muted-foreground)' }}>@{req.username}</p>
+                        )}
+                      </div>
+                      <div className="flex gap-2 flex-shrink-0">
+                        <button
+                          disabled={respondingToId === req.id}
+                          onClick={() => handleRespondToRequest(req, true)}
+                          className="w-8 h-8 rounded-lg flex items-center justify-center"
+                          style={{ background: 'rgba(0,230,118,0.15)', opacity: respondingToId === req.id ? 0.5 : 1 }}
+                        >
+                          <CheckCircle size={16} style={{ color: 'var(--success)' }} />
+                        </button>
+                        <button
+                          disabled={respondingToId === req.id}
+                          onClick={() => handleRespondToRequest(req, false)}
+                          className="w-8 h-8 rounded-lg flex items-center justify-center"
+                          style={{ background: 'rgba(255,77,141,0.15)', opacity: respondingToId === req.id ? 0.5 : 1 }}
+                        >
+                          <XCircle size={16} style={{ color: 'var(--social)' }} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <p className="text-xs font-semibold mb-3 px-1" style={{ color: 'var(--muted-foreground)' }}>
               Manage Members
             </p>
