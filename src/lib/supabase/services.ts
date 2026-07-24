@@ -1022,24 +1022,28 @@ export async function respondToGroupInvite(groupId: string, accept: boolean): Pr
     .is('read_at', null);
 }
 
-export async function respondToPoolInvite(poolId: string, accept: boolean): Promise<void> {
+export async function respondToPoolInvite(inviteId: string, accept: boolean): Promise<void> {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not authenticated');
 
-  if (accept) {
-    const { error } = await supabase
-      .from('pool_participants')
-      .insert({ pool_id: poolId, user_id: user.id });
-    if (error) throw error;
-  }
+  // inviteId here is the pool_invites row id (that's what entity_id points
+  // to on a pool_invite notification) — not the pool's own id. Accepting
+  // just marks the invite responded to; actually joining the pool (picking
+  // an outcome + stake) still happens through the normal entry flow, since
+  // pool_entries requires that data and an invite doesn't carry it.
+  const { error } = await supabase
+    .from('pool_invites')
+    .update({ status: accept ? 'accepted' : 'declined', responded_at: new Date().toISOString() })
+    .eq('id', inviteId);
+  if (error) throw error;
 
   await supabase
     .from('notifications')
     .update({ read_at: new Date().toISOString() })
     .eq('user_id', user.id)
     .eq('type', 'pool_invite')
-    .eq('entity_id', poolId)
+    .eq('entity_id', inviteId)
     .is('read_at', null);
 }
 
@@ -1105,15 +1109,10 @@ export async function invitePoolFriend(poolId: string, friendUserId: string): Pr
   if (!user) throw new Error('Not authenticated');
 
   const { error } = await supabase
-    .from('pool_participants')
-    .insert({ pool_id: poolId, user_id: friendUserId, status: 'invited', invited_by: user.id });
+    .from('pool_invites')
+    .insert({ pool_id: poolId, inviter_id: user.id, invitee_id: friendUserId, status: 'pending' });
   if (error) throw error;
 
-  await supabase.from('notifications').insert({
-    user_id: friendUserId,
-    type: 'pool_invite',
-    title: 'Pool Invite',
-    body: 'You have been invited to join a pool.',
-    entity_id: poolId,
-  });
+  // No manual notification insert needed — trg_notify_pool_invite already
+  // fires on this insert and creates it automatically.
 }

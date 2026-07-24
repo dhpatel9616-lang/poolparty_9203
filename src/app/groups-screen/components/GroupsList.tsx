@@ -61,29 +61,41 @@ export default function GroupsList() {
   const fetchGroups = async () => {
     if (!user) { setLoading(false); return; }
     const supabase = createClient();
+
+    // Scope to groups this user is actually a member of — the previous
+    // version queried `groups` with no filter at all, meaning every user
+    // saw the 20 most recently created groups platform-wide, regardless
+    // of membership.
+    const { data: myMemberships, error: membershipError } = await supabase
+      .from('group_members')
+      .select('group_id')
+      .eq('user_id', user.id);
+
+    if (membershipError) {
+      console.error('Failed to load group memberships', membershipError);
+      setLoading(false);
+      return;
+    }
+
+    const myGroupIds = (myMemberships ?? []).map((m: any) => m.group_id);
+
+    if (myGroupIds.length === 0) {
+      setGroups([]);
+      setLoading(false);
+      return;
+    }
+
     const { data, error } = await supabase
       .from('groups')
       .select('*, members:group_members(user_id, wins, user:user_id(full_name))')
-      .order('created_at', { ascending: false })
-      .limit(20);
+      .in('id', myGroupIds)
+      .order('created_at', { ascending: false });
 
-    if (!error && data && data.length > 0) {
+    if (!error && data) {
       setGroups(data.map(mapDbGroupToGroup));
     } else {
-      // Fallback: try pools table
-      const { data: poolData } = await supabase
-        .from('pools')
-        .select('*')
-        .eq('pool_type', 'group_pool')
-        .order('created_at', { ascending: false })
-        .limit(20);
-      if (poolData && poolData.length > 0) {
-        setGroups(poolData.map((p: any) => ({
-          id: p.id, name: p.title || 'Group Pool', emoji: p.icon || '🏆',
-          memberCount: p.participant_count ?? 0, activeContracts: p.status === 'open' ? 1 : 0,
-          totalContracts: 1, members: [], createdAt: p.created_at, status: p.status,
-        })));
-      }
+      console.error('Failed to load groups', error);
+      setGroups([]);
     }
     setLoading(false);
   };

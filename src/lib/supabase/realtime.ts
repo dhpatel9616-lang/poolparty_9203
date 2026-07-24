@@ -373,7 +373,7 @@ export function useGroupMembersRealtime(groupId?: string) {
     const supabase = createClient();
     const { data, error: fetchError } = await supabase
       .from('group_members')
-      .select('*, profile:profiles(full_name, username, avatar_url)')
+      .select('*, profile:user_profiles(full_name, username, avatar_url)')
       .eq('group_id', groupId)
       .order('joined_at', { ascending: true });
     if (fetchError) {

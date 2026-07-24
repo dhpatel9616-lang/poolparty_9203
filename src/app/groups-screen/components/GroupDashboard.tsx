@@ -5,23 +5,23 @@ import { fetchGroupContracts, fetchPendingJoinRequests, respondToJoinRequest, ty
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { ArrowLeft, FileText, CreditCard, AlertTriangle, Users, Trophy, ShieldOff, UserPlus, Crown, Shield, User, X, CheckCircle, XCircle, Link as LinkIcon, MessageCircle } from 'lucide-react';
+import { ArrowLeft, FileText, CreditCard, AlertTriangle, Trophy, ShieldOff, UserPlus, Crown, Shield, User, X, CheckCircle, XCircle, Link as LinkIcon, MessageCircle } from 'lucide-react';
 import StatusBadge from '@/components/ui/StatusBadge';
 import TrustBadge from '@/components/ui/TrustBadge';
 import { toast } from 'sonner';
 import { useGroupMembersRealtime } from '@/lib/supabase/realtime';
 import ChatPanel from '@/components/chat/ChatPanel';
+import BottomSheet from '@/components/ui/BottomSheet';
 
 
 
-type GroupTab = 'contracts' | 'chat' | 'payments' | 'disputes' | 'members' | 'leaderboard' | 'blacklist';
+type GroupTab = 'contracts' | 'chat' | 'payments' | 'disputes' | 'leaderboard' | 'blacklist';
 
 const GROUP_TABS: { id: GroupTab; label: string; icon: React.ReactNode }[] = [
   { id: 'contracts', label: 'Contracts', icon: <FileText size={14} /> },
   { id: 'chat', label: 'Chat', icon: <MessageCircle size={14} /> },
   { id: 'payments', label: 'Payments', icon: <CreditCard size={14} /> },
   { id: 'disputes', label: 'Disputes', icon: <AlertTriangle size={14} /> },
-  { id: 'members', label: 'Members', icon: <Users size={14} /> },
   { id: 'leaderboard', label: 'Leaderboard', icon: <Trophy size={14} /> },
   { id: 'blacklist', label: 'Blacklist', icon: <ShieldOff size={14} /> },
 ];
@@ -138,6 +138,7 @@ export default function GroupDashboard({ group, onBack }: GroupDashboardProps) {
   const router = useRouter();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<GroupTab>('contracts');
+  const [showMembersSheet, setShowMembersSheet] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -290,14 +291,15 @@ export default function GroupDashboard({ group, onBack }: GroupDashboardProps) {
         {/* Stats strip */}
         <div className="grid grid-cols-3 gap-2 mb-4">
           {[
-            { id: 'gs-members', label: 'Members', value: liveMemberCount, color: 'var(--primary)' },
-            { id: 'gs-active', label: 'Active', value: group.activeContracts, color: 'var(--success)' },
-            { id: 'gs-total', label: 'Total', value: group.totalContracts, color: 'var(--muted-foreground)' },
+            { id: 'gs-members', label: 'Members', value: liveMemberCount, color: 'var(--primary)', clickable: true },
+            { id: 'gs-active', label: 'Active', value: group.activeContracts, color: 'var(--success)', clickable: false },
+            { id: 'gs-total', label: 'Total', value: group.totalContracts, color: 'var(--muted-foreground)', clickable: false },
           ].map((s) => (
             <div
               key={s.id}
+              onClick={s.clickable ? () => setShowMembersSheet(true) : undefined}
               className="rounded-xl p-3 text-center"
-              style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+              style={{ background: 'var(--surface)', border: '1px solid var(--border)', cursor: s.clickable ? 'pointer' : 'default' }}
             >
               <p className="text-lg font-bold" style={{ color: s.color, fontVariantNumeric: 'tabular-nums' }}>
                 {s.value}
@@ -371,144 +373,6 @@ export default function GroupDashboard({ group, onBack }: GroupDashboardProps) {
           </div>
         )}
 
-        {activeTab === 'members' && (
-          <div className="space-y-2">
-            {isOwner && joinRequests.length > 0 && (
-              <div className="mb-4">
-                <p className="text-xs font-semibold mb-2 px-1" style={{ color: 'var(--warning)' }}>
-                  Pending Requests ({joinRequests.length})
-                </p>
-                <div className="space-y-2">
-                  {joinRequests.map((req) => (
-                    <div
-                      key={req.id}
-                      className="rounded-xl p-3 flex items-center gap-3"
-                      style={{ background: 'rgba(255,200,87,0.06)', border: '1px solid rgba(255,200,87,0.25)' }}
-                    >
-                      <div
-                        className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 overflow-hidden"
-                        style={{ background: 'var(--elevated)', color: 'var(--foreground)' }}
-                      >
-                        {req.avatarUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={req.avatarUrl} alt="" className="w-full h-full object-cover" />
-                        ) : (
-                          req.fullName.charAt(0).toUpperCase()
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-foreground truncate">{req.fullName}</p>
-                        {req.username && (
-                          <p className="text-xs truncate" style={{ color: 'var(--muted-foreground)' }}>@{req.username}</p>
-                        )}
-                      </div>
-                      <div className="flex gap-2 flex-shrink-0">
-                        <button
-                          disabled={respondingToId === req.id}
-                          onClick={() => handleRespondToRequest(req, true)}
-                          className="w-8 h-8 rounded-lg flex items-center justify-center"
-                          style={{ background: 'rgba(0,230,118,0.15)', opacity: respondingToId === req.id ? 0.5 : 1 }}
-                        >
-                          <CheckCircle size={16} style={{ color: 'var(--success)' }} />
-                        </button>
-                        <button
-                          disabled={respondingToId === req.id}
-                          onClick={() => handleRespondToRequest(req, false)}
-                          className="w-8 h-8 rounded-lg flex items-center justify-center"
-                          style={{ background: 'rgba(255,77,141,0.15)', opacity: respondingToId === req.id ? 0.5 : 1 }}
-                        >
-                          <XCircle size={16} style={{ color: 'var(--social)' }} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            <p className="text-xs font-semibold mb-3 px-1" style={{ color: 'var(--muted-foreground)' }}>
-              Manage Members
-            </p>
-            {group.members.map((member, index) => {
-              if (removedIds.has(member.userId)) return null;
-              return (
-                <div
-                  key={`member-${member.userId}`}
-                  className="rounded-xl p-3 flex items-center gap-3"
-                  style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
-                >
-                  <div
-                    className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0"
-                    style={{ background: 'rgba(124,92,255,0.15)', color: 'var(--primary)' }}
-                  >
-                    {member.avatar}
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-sm font-semibold text-foreground">{member.name}</p>
-                      <div className="flex items-center gap-0.5">
-                        {getRoleIcon(index)}
-                        <span className="text-2xs" style={{ color: 'var(--muted-foreground)' }}>
-                          {getRoleLabel(index)}
-                        </span>
-                      </div>
-                    </div>
-                    <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                      {member.wins} wins · Score: {member.trustScore}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <TrustBadge
-                      tier={member.trustScore >= 800 ? 'Excellent' : member.trustScore >= 600 ? 'Good' : member.trustScore >= 400 ? 'Risky' : 'Unreliable'}
-                      size="sm"
-                    />
-                    {isOwner && member.userId !== user?.id && (
-                      <div className="flex gap-1">
-                        <button
-                          onClick={() => handleRemoveMember(member.userId, member.name)}
-                          className="px-2 py-1 rounded-lg text-xs font-medium"
-                          style={{ background: 'rgba(255,200,87,0.1)', color: 'var(--warning)' }}
-                        >
-                          Remove
-                        </button>
-                        <button
-                          onClick={() => handleBlacklist(member.userId, member.name)}
-                          className="w-7 h-7 rounded-lg flex items-center justify-center"
-                          style={{ background: 'rgba(255,77,141,0.1)' }}
-                          title="Blacklist member"
-                        >
-                          <X size={12} style={{ color: 'var(--social)' }} />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-
-            {/* Leave / Delete group */}
-            <div className="mt-4 space-y-2">
-              {!isOwner && (
-                <button
-                  onClick={() => setShowLeaveModal(true)}
-                  className="w-full py-3 rounded-xl text-sm font-semibold"
-                  style={{ background: 'rgba(255,77,141,0.1)', color: 'var(--social)', border: '1px solid rgba(255,77,141,0.2)' }}
-                >
-                  Leave Group
-                </button>
-              )}
-              {isOwner && (
-                <button
-                  onClick={() => setShowDeleteModal(true)}
-                  className="w-full py-3 rounded-xl text-sm font-semibold"
-                  style={{ background: 'rgba(255,77,141,0.1)', color: 'var(--social)', border: '1px solid rgba(255,77,141,0.2)' }}
-                >
-                  Delete Group
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
         {activeTab === 'leaderboard' && (
           <div>
             <div className="flex items-end justify-center gap-3 mb-6 pt-2">
@@ -575,6 +439,142 @@ export default function GroupDashboard({ group, onBack }: GroupDashboardProps) {
 
       {/* Modals */}
       {showInvite && <InviteModal group={group} onClose={() => setShowInvite(false)} />}
+
+      <BottomSheet isOpen={showMembersSheet} onClose={() => setShowMembersSheet(false)} title={`Members (${liveMemberCount})`} maxHeightVh={85}>
+        {isOwner && joinRequests.length > 0 && (
+          <div className="mb-4">
+            <p className="text-xs font-semibold mb-2 px-1" style={{ color: 'var(--warning)' }}>
+              Pending Requests ({joinRequests.length})
+            </p>
+            <div className="space-y-2">
+              {joinRequests.map((req) => (
+                <div
+                  key={req.id}
+                  className="rounded-xl p-3 flex items-center gap-3"
+                  style={{ background: 'rgba(255,200,87,0.06)', border: '1px solid rgba(255,200,87,0.25)' }}
+                >
+                  <div
+                    className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 overflow-hidden"
+                    style={{ background: 'var(--elevated)', color: 'var(--foreground)' }}
+                  >
+                    {req.avatarUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={req.avatarUrl} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      req.fullName.charAt(0).toUpperCase()
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-foreground truncate">{req.fullName}</p>
+                    {req.username && (
+                      <p className="text-xs truncate" style={{ color: 'var(--muted-foreground)' }}>@{req.username}</p>
+                    )}
+                  </div>
+                  <div className="flex gap-2 flex-shrink-0">
+                    <button
+                      disabled={respondingToId === req.id}
+                      onClick={() => handleRespondToRequest(req, true)}
+                      className="w-8 h-8 rounded-lg flex items-center justify-center"
+                      style={{ background: 'rgba(0,230,118,0.15)', opacity: respondingToId === req.id ? 0.5 : 1 }}
+                    >
+                      <CheckCircle size={16} style={{ color: 'var(--success)' }} />
+                    </button>
+                    <button
+                      disabled={respondingToId === req.id}
+                      onClick={() => handleRespondToRequest(req, false)}
+                      className="w-8 h-8 rounded-lg flex items-center justify-center"
+                      style={{ background: 'rgba(255,77,141,0.15)', opacity: respondingToId === req.id ? 0.5 : 1 }}
+                    >
+                      <XCircle size={16} style={{ color: 'var(--social)' }} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        <p className="text-xs font-semibold mb-3 px-1" style={{ color: 'var(--muted-foreground)' }}>
+          Manage Members
+        </p>
+        <div className="space-y-2">
+          {group.members.map((member, index) => {
+            if (removedIds.has(member.userId)) return null;
+            return (
+              <div
+                key={`member-${member.userId}`}
+                className="rounded-xl p-3 flex items-center gap-3"
+                style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+              >
+                <div
+                  className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0"
+                  style={{ background: 'rgba(124,92,255,0.15)', color: 'var(--primary)' }}
+                >
+                  {member.avatar}
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm font-semibold text-foreground">{member.name}</p>
+                    <div className="flex items-center gap-0.5">
+                      {getRoleIcon(index)}
+                      <span className="text-2xs" style={{ color: 'var(--muted-foreground)' }}>
+                        {getRoleLabel(index)}
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                    {member.wins} wins · Score: {member.trustScore}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <TrustBadge
+                    tier={member.trustScore >= 800 ? 'Excellent' : member.trustScore >= 600 ? 'Good' : member.trustScore >= 400 ? 'Risky' : 'Unreliable'}
+                    size="sm"
+                  />
+                  {isOwner && member.userId !== user?.id && (
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => handleRemoveMember(member.userId, member.name)}
+                        className="px-2 py-1 rounded-lg text-xs font-medium"
+                        style={{ background: 'rgba(255,200,87,0.1)', color: 'var(--warning)' }}
+                      >
+                        Remove
+                      </button>
+                      <button
+                        onClick={() => handleBlacklist(member.userId, member.name)}
+                        className="w-7 h-7 rounded-lg flex items-center justify-center"
+                        style={{ background: 'rgba(255,77,141,0.1)' }}
+                        title="Blacklist member"
+                      >
+                        <X size={12} style={{ color: 'var(--social)' }} />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-4 space-y-2">
+          {!isOwner && (
+            <button
+              onClick={() => { setShowMembersSheet(false); setShowLeaveModal(true); }}
+              className="w-full py-3 rounded-xl text-sm font-semibold"
+              style={{ background: 'rgba(255,77,141,0.1)', color: 'var(--social)', border: '1px solid rgba(255,77,141,0.2)' }}
+            >
+              Leave Group
+            </button>
+          )}
+          {isOwner && (
+            <button
+              onClick={() => { setShowMembersSheet(false); setShowDeleteModal(true); }}
+              className="w-full py-3 rounded-xl text-sm font-semibold"
+              style={{ background: 'rgba(255,77,141,0.1)', color: 'var(--social)', border: '1px solid rgba(255,77,141,0.2)' }}
+            >
+              Delete Group
+            </button>
+          )}
+        </div>
+      </BottomSheet>
 
       {/* Leave modal */}
       {showLeaveModal && (

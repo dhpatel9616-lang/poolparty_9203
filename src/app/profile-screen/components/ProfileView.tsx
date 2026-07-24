@@ -4,7 +4,7 @@ import TrustScoreCard from './TrustScoreCard';
 import BadgeGrid from './BadgeGrid';
 import StatsGrid from './StatsGrid';
 import TrustHistoryLog from './TrustHistoryLog';
-import { Settings, Share2, Network, Trophy, Shield, Gavel, Star, BarChart2, Wallet } from 'lucide-react';
+import { Settings, Share2, Network, Trophy, Shield, Gavel, Star, BarChart2, Wallet, Users } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
@@ -179,6 +179,7 @@ export default function ProfileView() {
       <div className="rounded-2xl p-4 space-y-2" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
         <p className="text-xs font-semibold mb-3" style={{ color: 'var(--muted-foreground)' }}>REPUTATION & TRUST</p>
         {[
+          { href: '/friends-screen', icon: Users, label: 'Friends', desc: 'Requests, add friends & manage your list', color: 'var(--social)' },
           { href: '/reputation-timeline', icon: Shield, label: 'Reputation Timeline', desc: 'Accountability score & history', color: 'var(--primary)' },
           { href: '/trust-graph', icon: Network, label: 'Trust Graph', desc: 'Your trust network explorer', color: 'var(--success)' },
           { href: '/settlement', icon: Wallet, label: 'Settlement', desc: 'Manage obligations & payments', color: '#00C9A7' },
