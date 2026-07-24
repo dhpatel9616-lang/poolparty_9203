@@ -627,11 +627,12 @@ export async function resolveContractWithPaymentNotifications(params: {
 
   // Insert notifications for losers
   if (notificationInserts.length > 0) {
-    await supabase.from('notifications').insert(notificationInserts);
+    const { error: loserNotifError } = await supabase.from('notifications').insert(notificationInserts);
+    if (loserNotifError) console.error('Failed to notify losers of settlement', loserNotifError);
   }
 
   // Notify winner about the resolution
-  await supabase.from('notifications').insert({
+  const { error: winnerNotifError } = await supabase.from('notifications').insert({
     user_id: params.winnerId,
     type: 'contract_resolved',
     title: `You won — ${params.poolTitle}! 🏆`,
@@ -643,6 +644,7 @@ export async function resolveContractWithPaymentNotifications(params: {
       amount: params.returnAmount,
     },
   });
+  if (winnerNotifError) console.error('Failed to notify winner of resolution', winnerNotifError);
 
   return { winnerPaymentMethods };
 }

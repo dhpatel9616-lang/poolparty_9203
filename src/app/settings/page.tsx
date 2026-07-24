@@ -1,13 +1,14 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import MobileLayout from '@/components/MobileLayout';
-import { ArrowLeft, Camera, Check, X, ChevronRight, AlertCircle, LogOut, Sun, Moon, Monitor, Plus, Trash2, CreditCard } from 'lucide-react';
+import { ArrowLeft, Camera, Check, X, ChevronRight, AlertCircle, LogOut, Sun, Moon, Monitor } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import { useTheme, ThemeMode } from '@/contexts/ThemeContext';
 import Icon from '@/components/ui/AppIcon';
 import { useAuth } from '@/contexts/AuthContext';
+import PaymentMethodsManager from '@/app/profile-screen/components/PaymentMethodsManager';
 
 
 interface ToggleProps {
@@ -112,16 +113,6 @@ function ToggleRow({ label, subtitle, enabled, onChange, loading }: ToggleRowPro
   );
 }
 
-// ─── Payment Method Types ─────────────────────────────────────────────────────
-
-interface PaymentMethod {
-  id: string;
-  type: string;
-  handle: string;
-}
-
-const PAYMENT_TYPES = ['Venmo', 'PayPal', 'Cash App', 'Zelle', 'Apple Pay', 'Bank Transfer', 'Other'];
-
 export default function SettingsPage() {
   const router = useRouter();
   const supabase = createClient();
@@ -194,72 +185,6 @@ export default function SettingsPage() {
 
   // Toggle loading states
   const [savingToggle, setSavingToggle] = useState<string | null>(null);
-
-  // Payment Methods
-  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
-  const [loadingPayments, setLoadingPayments] = useState(false);
-  const [showAddPayment, setShowAddPayment] = useState(false);
-  const [newPaymentType, setNewPaymentType] = useState('Venmo');
-  const [newPaymentHandle, setNewPaymentHandle] = useState('');
-  const [savingPayment, setSavingPayment] = useState(false);
-
-  // Load payment methods on mount
-  React.useEffect(() => {
-    if (!user?.id) return;
-    const load = async () => {
-      setLoadingPayments(true);
-      const { data } = await supabase
-        .from('user_profiles')
-        .select('payment_methods')
-        .eq('id', user.id)
-        .single();
-      if (data?.payment_methods) {
-        setPaymentMethods(data.payment_methods as PaymentMethod[]);
-      }
-      setLoadingPayments(false);
-    };
-    load();
-  }, [user?.id]);
-
-  const handleAddPaymentMethod = async () => {
-    if (!newPaymentHandle.trim() || !user?.id) return;
-    setSavingPayment(true);
-    const newMethod: PaymentMethod = {
-      id: Date.now().toString(),
-      type: newPaymentType,
-      handle: newPaymentHandle.trim(),
-    };
-    const updated = [...paymentMethods, newMethod];
-    try {
-      await supabase
-        .from('user_profiles')
-        .update({ payment_methods: updated })
-        .eq('id', user.id);
-      setPaymentMethods(updated);
-      setNewPaymentHandle('');
-      setNewPaymentType('Venmo');
-      setShowAddPayment(false);
-      toast.success('Payment method added');
-    } catch {
-      toast.error('Failed to save');
-    }
-    setSavingPayment(false);
-  };
-
-  const handleRemovePaymentMethod = async (id: string) => {
-    if (!user?.id) return;
-    const updated = paymentMethods.filter((m) => m.id !== id);
-    try {
-      await supabase
-        .from('user_profiles')
-        .update({ payment_methods: updated })
-        .eq('id', user.id);
-      setPaymentMethods(updated);
-      toast.success('Removed');
-    } catch {
-      toast.error('Failed to remove');
-    }
-  };
 
   const TOGGLE_KEY_MAP: Record<string, string> = {
     push: 'push_enabled',
@@ -499,99 +424,9 @@ export default function SettingsPage() {
               When you win a contract, losers will automatically receive these payment methods so they know how to pay you.
             </p>
           </div>
-          {loadingPayments ? (
-            <div className="px-4 py-4">
-              <div className="h-8 rounded-lg animate-pulse" style={{ background: 'var(--elevated)' }} />
-            </div>
-          ) : (
-            <>
-              {paymentMethods.length === 0 && !showAddPayment && (
-                <div className="px-4 py-4 text-center">
-                  <CreditCard size={24} className="mx-auto mb-2" style={{ color: 'var(--muted-foreground)' }} />
-                  <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>No payment methods yet</p>
-                </div>
-              )}
-              {paymentMethods.map((m) => (
-                <div
-                  key={m.id}
-                  className="flex items-center justify-between px-4 py-3 border-b last:border-b-0"
-                  style={{ borderColor: 'var(--border)' }}
-                >
-                  <div className="flex items-center gap-2">
-                    <div
-                      className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold"
-                      style={{ background: 'rgba(124,92,255,0.12)', color: 'var(--primary)' }}
-                    >
-                      {m.type.slice(0, 2).toUpperCase()}
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-foreground">{m.type}</p>
-                      <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{m.handle}</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => handleRemovePaymentMethod(m.id)}
-                    className="w-7 h-7 rounded-lg flex items-center justify-center active:scale-90"
-                    style={{ background: 'rgba(255,77,141,0.1)' }}
-                  >
-                    <Trash2 size={13} style={{ color: 'var(--social)' }} />
-                  </button>
-                </div>
-              ))}
-
-              {showAddPayment ? (
-                <div className="px-4 py-3 space-y-2">
-                  <select
-                    value={newPaymentType}
-                    onChange={(e) => setNewPaymentType(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl text-sm outline-none"
-                    style={{ background: 'var(--elevated)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
-                  >
-                    {PAYMENT_TYPES.map((t) => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
-                  <input
-                    type="text"
-                    value={newPaymentHandle}
-                    onChange={(e) => setNewPaymentHandle(e.target.value)}
-                    placeholder={newPaymentType === 'Bank Transfer' ? 'Account details' : `Your ${newPaymentType} handle`}
-                    className="w-full px-3 py-2 rounded-xl text-sm outline-none"
-                    style={{ background: 'var(--elevated)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => { setShowAddPayment(false); setNewPaymentHandle(''); }}
-                      className="flex-1 py-2 rounded-xl text-sm font-semibold"
-                      style={{ background: 'var(--elevated)', color: 'var(--muted-foreground)' }}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={handleAddPaymentMethod}
-                      disabled={!newPaymentHandle.trim() || savingPayment}
-                      className="flex-1 py-2 rounded-xl text-sm font-semibold transition-all active:scale-95"
-                      style={{
-                        background: newPaymentHandle.trim() ? 'var(--primary)' : 'var(--elevated)',
-                        color: newPaymentHandle.trim() ? '#fff' : 'var(--muted-foreground)',
-                      }}
-                    >
-                      {savingPayment ? 'Saving…' : 'Add'}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  onClick={() => setShowAddPayment(true)}
-                  className="w-full flex items-center gap-2 px-4 py-3 text-sm font-medium transition-all active:bg-white/5"
-                  style={{ color: 'var(--primary)' }}
-                >
-                  <Plus size={15} />
-                  Add Payment Method
-                </button>
-              )}
-            </>
-          )}
+          <div className="px-4 py-3">
+            <PaymentMethodsManager />
+          </div>
         </Section>
 
         {/* Notifications */}

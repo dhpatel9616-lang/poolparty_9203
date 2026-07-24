@@ -330,11 +330,11 @@ export default function DiscoverPoolsPage() {
   const fetchUserHistory = useCallback(async () => {
     if (!user) return;
     try {
-      const { data: createdPools } = await supabase.from('pools').select('category').eq('creator_id', user.id).limit(20);
-      const { data: joinedEntries } = await supabase.from('pool_entries').select('pool:pool_id(category)').eq('user_id', user.id).limit(20);
+      const { data: createdPools } = await supabase.from('pools').select('pool_type').eq('creator_id', user.id).limit(20);
+      const { data: joinedEntries } = await supabase.from('pool_entries').select('pool:pool_id(pool_type)').eq('user_id', user.id).limit(20);
       const { data: groupMemberships } = await supabase.from('group_members').select('group:group_id(name)').eq('user_id', user.id).limit(10);
-      const createdCategories = [...new Set((createdPools ?? []).map((p: any) => p.category).filter(Boolean) as string[])];
-      const joinedCategories = [...new Set((joinedEntries ?? []).map((e: any) => e.pool?.category).filter(Boolean) as string[])];
+      const createdCategories = [...new Set((createdPools ?? []).map((p: any) => p.pool_type).filter(Boolean) as string[])];
+      const joinedCategories = [...new Set((joinedEntries ?? []).map((e: any) => e.pool?.pool_type).filter(Boolean) as string[])];
       const groupActivity = [...new Set((groupMemberships ?? []).map((m: any) => m.group?.name).filter(Boolean) as string[])];
       setUserHistory({ createdCategories, joinedCategories, groupActivity });
     } catch {/* keep default */}

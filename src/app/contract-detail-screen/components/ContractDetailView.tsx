@@ -363,7 +363,7 @@ function AdminSheet({ contract, participants, onClose, onResolved, onStatusChang
       // Notify participants their pool was cancelled
       const recipientIds = participants.map((p) => p.userId).filter((id) => id !== user?.id);
       if (recipientIds.length > 0) {
-        await supabase.from('notifications').insert(
+        const { error: cancelNotifError } = await supabase.from('notifications').insert(
           recipientIds.map((userId) => ({
             user_id: userId,
             type: 'pool_cancelled',
@@ -372,6 +372,7 @@ function AdminSheet({ contract, participants, onClose, onResolved, onStatusChang
             metadata: { pool_id: contract.id },
           }))
         );
+        if (cancelNotifError) console.error('Failed to notify participants of cancellation', cancelNotifError);
       }
 
       toast.success('Pool cancelled.');

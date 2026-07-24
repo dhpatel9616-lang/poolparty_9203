@@ -30,22 +30,27 @@ export default function FriendsActiveContracts() {
     async function fetchFriendsContracts() {
       const supabase = createClient();
 
-      // Step 1: Get connected friend IDs from trust_relationships (both directions)
+      // Step 1: Get connected friend IDs from friendships (accepted, both directions).
+      // (Previously queried trust_relationships, a table nothing in the app
+      // ever writes to — this widget always showed "No friend activity"
+      // regardless of real friends.)
       const [outgoingResult, incomingResult] = await Promise.all([
         supabase
-          .from('trust_relationships')
-          .select('to_user_id')
-          .eq('from_user_id', user!.id),
+          .from('friendships')
+          .select('addressee_id')
+          .eq('requester_id', user!.id)
+          .eq('status', 'accepted'),
         supabase
-          .from('trust_relationships')
-          .select('from_user_id')
-          .eq('to_user_id', user!.id),
+          .from('friendships')
+          .select('requester_id')
+          .eq('addressee_id', user!.id)
+          .eq('status', 'accepted'),
       ]);
 
       const friendIds = Array.from(
         new Set([
-          ...(outgoingResult.data ?? []).map((r: any) => r.to_user_id),
-          ...(incomingResult.data ?? []).map((r: any) => r.from_user_id),
+          ...(outgoingResult.data ?? []).map((r: any) => r.addressee_id),
+          ...(incomingResult.data ?? []).map((r: any) => r.requester_id),
         ])
       ).filter((id) => id !== user!.id);
 
